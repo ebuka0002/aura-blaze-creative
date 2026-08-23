@@ -1,0 +1,92 @@
+<!--
+  AURA BLAZE CREATIVE — Confirm Signup email template
+  ====================================================
+  Where this goes: Supabase Dashboard → Authentication → Email Templates
+  → "Confirm signup" → paste this into the HTML body → Save.
+
+  IMPORTANT: this uses {{ .TokenHash }}, not {{ .ConfirmationURL }}.
+  Reason: many email providers (Gmail security scanning, Microsoft Defender
+  Safe Links, some spam filters) automatically "click" links in incoming
+  emails to scan them for safety before the person opens the email. If the
+  link itself directly confirmed the account, that automated prefetch could
+  consume the single-use token before the real person ever clicks — leaving
+  them stuck on an "expired" link despite having done nothing wrong.
+  Routing through our own /account/confirm page means the token only gets
+  used when a person explicitly clicks a "Confirm My Account" button on
+  that page, not just from the page loading.
+-->
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Confirm your email</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #F5F3EF; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #F5F3EF; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 560px; background-color: #ffffff;">
+
+          <!-- Header -->
+          <tr>
+            <td style="background-color: #0B0B0C; padding: 32px; text-align: center;">
+              <div style="font-size: 22px; letter-spacing: 2px; color: #F5F3EF; font-weight: bold;">AURA BLAZE</div>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding: 40px 32px 8px;">
+              <div style="font-size: 22px; font-weight: 700; color: #0B0B0C;">Confirm Your Email</div>
+              <p style="font-size: 14px; color: #8A8578; margin-top: 12px; line-height: 1.6;">
+                Welcome to Aura Blaze Creative. Confirm your email address to finish creating
+                your account — faster checkout, order history, and saved details, all in one place.
+              </p>
+            </td>
+          </tr>
+
+          <!-- CTA button -->
+          <tr>
+            <td style="padding: 24px 32px 40px;" align="center">
+              <a href="{{ .SiteURL }}/account/confirm?token_hash={{ .TokenHash }}&type=signup"
+                 style="display: inline-block; background-color: #0B0B0C; color: #F5F3EF; text-decoration: none; padding: 14px 36px; font-size: 13px; letter-spacing: 1.5px; text-transform: uppercase; font-weight: 600;">
+                Confirm Email Address
+              </a>
+            </td>
+          </tr>
+
+          <!-- Fallback plain link -->
+          <tr>
+            <td style="padding: 0 32px 32px;">
+              <div style="background-color: #EAE6DD; padding: 16px; font-size: 12px; color: #8A8578; line-height: 1.6; word-break: break-all;">
+                Button not working? Copy and paste this link into your browser:<br />
+                <a href="{{ .SiteURL }}/account/confirm?token_hash={{ .TokenHash }}&type=signup" style="color: #8A1F11;">{{ .SiteURL }}/account/confirm?token_hash={{ .TokenHash }}&type=signup</a>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Security note -->
+          <tr>
+            <td style="padding: 0 32px 32px;">
+              <p style="font-size: 12px; color: #8A8578; line-height: 1.6; margin: 0;">
+                If you didn't create an account with Aura Blaze Creative, you can safely ignore this email.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 24px 32px; background-color: #0B0B0C; text-align: center;">
+              <div style="font-size: 11px; letter-spacing: 1px; color: #8A8578;">
+                AURA BLAZE CREATIVE — TIMELESS. DISTINCT. ICONIC.
+              </div>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

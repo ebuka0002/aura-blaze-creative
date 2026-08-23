@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+@theme {
+  --color-void: #0B0B0C;
+  --color-void-soft: #17161A;
+  --color-bone: #F5F3EF;
+  --color-bone-dim: #EAE6DD;
+  --color-blaze: #8A1F11;
+  --color-blaze-bright: #B8341E;
+  --color-grey: #8A8578;
+  --color-hairline: #D4CDBF;
+
+  --font-display: "Bebas Neue", sans-serif;
+  --font-body: "Inter", sans-serif;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    background-color: var(--color-bone);
+    color: var(--color-void);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background-color: var(--color-blaze);
+    color: var(--color-bone);
+  }
+}
+
+@layer utilities {
+  .font-display {
+    font-family: var(--font-display);
+  }
+  .clip-blade {
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 6% 100%);
+  }
+  .clip-blade-r {
+    clip-path: polygon(0 0, 100% 0, 94% 100%, 0 100%);
+  }
+  .clip-corner {
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 24px 100%, 0 calc(100% - 24px));
+  }
+}
+
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee {
+  animation: marquee 18s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-marquee {
+    animation: none;
+  }
+}
