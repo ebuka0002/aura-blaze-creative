@@ -90,6 +90,8 @@ const handleSubmit = async (e) => {
               <li><Link to="/shop/tshirts" className="hover:text-bone transition-colors">Shirts</Link></li>
               <li><Link to="/shop/headwear" className="hover:text-bone transition-colors">Headwear</Link></li>
               <li><Link to="/shop/accessories" className="hover:text-bone transition-colors">Accessories</Link></li>
+              <li><Link to="/shop/tank-tops" className="hover:text-bone transition-colors">Tank Tops</Link></li>
+              <li><Link to="/shop/denim-trousers" className="hover:text-bone transition-colors">Denim Trousers</Link></li>
             </ul>
           </div>
 

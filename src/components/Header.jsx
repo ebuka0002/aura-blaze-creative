@@ -7,6 +7,7 @@ import logoMark from '../assets/logo-transparent.png'
 import SearchOverlay from './SearchOverlay'
 
 const navLinks = [
+  { to: '/', label: 'Home' },
   { to: '/shop/jackets', label: 'Jackets' },
   { to: '/shop/tshirts', label: 'Shirts' },
   { to: '/shop/headwear', label: 'Headwear' },
@@ -48,7 +49,7 @@ export default function Header() {
               key={link.to}
               to={link.to}
               className={({ isActive }) =>
-                `text-[13px] tracking-[0.08em] uppercase font-medium transition-colors hover:text-blaze ${
+                `text-[11px] tracking-[0.08em] uppercase font-medium transition-colors hover:text-blaze ${
                   isActive ? 'text-blaze' : 'text-void'
                 }`
               }
@@ -75,7 +76,7 @@ export default function Header() {
                 key={link.to}
                 to={link.to}
                 className={({ isActive }) =>
-                  `text-[13px] tracking-[0.08em] uppercase font-medium transition-colors hover:text-blaze ${
+                  `text-[11px] tracking-[0.08em] uppercase font-medium transition-colors hover:text-blaze ${
                     isActive ? 'text-blaze' : 'text-void'
                   }`
                 }
@@ -140,7 +141,7 @@ export default function Header() {
                 key={link.to}
                 to={link.to}
                 onClick={() => setMobileOpen(false)}
-                className="font-display text-4xl tracking-wide py-3 border-b border-white/10"
+                className="font-display text-2xl md:text-3xl tracking-wide py-3 border-b border-white/10"
               >
                 {link.label}
               </Link>

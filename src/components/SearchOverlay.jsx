@@ -69,7 +69,7 @@ export default function SearchOverlay({ open, onClose }) {
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-[1400px] mx-auto px-5 md:px-8 py-8">
           {q === '' && (
-            <p className="text-grey text-sm">Start typing to search jackets, tees, headwear, and accessories.</p>
+            <p className="text-grey text-sm">Start typing to search jackets, shirts, tank tops, denim trousers, headwear, and accessories.</p>
           )}
           {q !== '' && results.length === 0 && (
             <p className="text-grey text-sm">No results for "{query}".</p>

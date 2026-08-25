@@ -2,7 +2,7 @@ import { Helmet } from 'react-helmet-async'
 
 const SITE_NAME = 'Aura Blaze Creative'
 const DEFAULT_DESCRIPTION =
-  '…embrace luxury with ease. Premium, minimalist streetwear from Aura Blaze Creative — timeless, distinct, iconic. Shop jackets, shirts, and headwear, shipping across Nigeria and internationally.'
+  '…embrace luxury with ease. Premium, minimalist streetwear from Aura Blaze Creative — timeless, distinct, iconic. Shop jackets, shirts, tank tops, denim trousers, headwear, and accessories, shipping across Nigeria and internationally.'
 // TODO: replace with a real, dedicated 1200x630 social-share image once
 // Ebuka has one — using the logo as a placeholder works but a proper
 // branded OG image (product shot + wordmark) will look far better when

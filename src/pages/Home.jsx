@@ -343,6 +343,8 @@ const categoryImages = {
   tshirts: shirt,
   headwear: cap,
   accessories: watch,
+  'tank-tops': shirt,
+  'denim-trousers': jacket,
 }
 
 export default function Home() {
@@ -559,6 +561,15 @@ const handleNewsletterSubmit = async (e) => {
           className="font-display text-3xl md:text-4xl tracking-wide hover:text-blaze transition-colors inline-block"
         >
           @aura__blaze_creative
+        </a>
+        <p className="text-xs tracking-[0.15em] uppercase text-grey mt-8 mb-1.5">Follow Us on Snapchat</p>
+        <a
+          href="https://www.snapchat.com/add/aurablaze01"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="font-display text-2xl md:text-3xl tracking-wide hover:text-blaze transition-colors inline-block"
+        >
+          @aurablaze01
         </a>
       </motion.section>
     </div>

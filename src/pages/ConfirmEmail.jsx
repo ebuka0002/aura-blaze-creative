@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../context/AuthContext'
 import SEO from '../components/SEO'
 
 // This page is what the link in the "Confirm your email" signup email
@@ -16,6 +17,7 @@ export default function ConfirmEmail() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const tokenHash = searchParams.get('token_hash')
+  const { refreshProfile } = useAuth()
 
   const [status, setStatus] = useState('idle') // 'idle' | 'confirming' | 'success' | 'error'
   const [error, setError] = useState('')
@@ -29,8 +31,13 @@ export default function ConfirmEmail() {
         type: 'signup',
       })
       if (verifyError) throw verifyError
+
+      // Refresh the authenticated customer profile before redirecting so the
+      // homepage/header has the customer's name immediately after confirmation.
+      await refreshProfile()
+
       setStatus('success')
-      setTimeout(() => navigate('/account', { replace: true }), 2000)
+      setTimeout(() => navigate('/', { replace: true }), 1200)
     } catch (err) {
       setStatus('error')
       setError(
@@ -64,7 +71,7 @@ export default function ConfirmEmail() {
       <div className="max-w-[440px] mx-auto px-5 py-24 text-center">
         <SEO title="Email Confirmed" path="/account/confirm" noindex />
         <h1 className="font-display text-3xl tracking-wide mb-3">Email Confirmed</h1>
-        <p className="text-grey text-sm">Redirecting you to your account…</p>
+        <p className="text-grey text-sm">Redirecting you to the Aura Blaze homepage…</p>
       </div>
     )
   }

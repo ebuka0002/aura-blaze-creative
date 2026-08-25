@@ -7,6 +7,8 @@ export const categories = [
   { id: 'tshirts', name: 'Shirts', tagline: 'Oversized. Everyday.' },
   { id: 'headwear', name: 'Headwear', tagline: 'Panel caps, bucket hats' },
   { id: 'accessories', name: 'Accessories', tagline: 'Finish the fit' },
+  { id: 'tank-tops', name: 'Tank Tops', tagline: 'Lightweight. Effortless.' },
+  { id: 'denim-trousers', name: 'Denim Trousers', tagline: 'Built for everyday movement' },
 ]
 
 // Returns the gallery images to display for a product given a selected color name.

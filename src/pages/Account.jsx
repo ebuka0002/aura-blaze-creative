@@ -16,6 +16,7 @@ export default function Account() {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [showConfirmationPopup, setShowConfirmationPopup] = useState(false)
 
   if (loading) {
     return (
@@ -82,8 +83,9 @@ export default function Account() {
     try {
       const { needsEmailConfirmation } = await signUp({ email, password, fullName })
       if (needsEmailConfirmation) {
-        setMessage("Almost there — check your email to confirm your account before logging in.")
+        setMessage('')
         setMode('login')
+        setShowConfirmationPopup(true)
       } else {
         navigate('/account', { replace: true })
       }
@@ -132,6 +134,23 @@ export default function Account() {
 
       {message && (
         <p className="text-sm text-void bg-bone-dim border border-hairline px-4 py-3 mb-5">{message}</p>
+      )}
+
+      {showConfirmationPopup && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-void/60 px-5" role="dialog" aria-modal="true" aria-labelledby="confirmation-title">
+          <div className="w-full max-w-[460px] bg-bone border border-hairline p-6 md:p-8 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs tracking-[0.15em] uppercase text-grey mb-2">Account created</p>
+                <h2 id="confirmation-title" className="font-display text-2xl md:text-3xl tracking-wide">Confirm your email</h2>
+              </div>
+              <button type="button" onClick={() => setShowConfirmationPopup(false)} className="text-grey hover:text-void text-2xl leading-none" aria-label="Close confirmation message">×</button>
+            </div>
+            <p className="text-sm text-grey leading-relaxed mt-5">We sent a confirmation email to <strong className="text-void">{email}</strong>. Open that email and click the confirmation button to activate your Aura Blaze account.</p>
+            <p className="text-sm text-grey leading-relaxed mt-3">Once your email is confirmed, come back here and log in normally.</p>
+            <button type="button" onClick={() => setShowConfirmationPopup(false)} className="w-full mt-6 bg-void text-bone py-3.5 text-sm tracking-[0.1em] uppercase font-medium hover:bg-blaze transition-colors">Got It</button>
+          </div>
+        </div>
       )}
 
       {mode === 'reset' ? (
