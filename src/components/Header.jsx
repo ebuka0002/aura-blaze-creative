@@ -12,6 +12,8 @@ const navLinks = [
   { to: '/shop/tshirts', label: 'Shirts' },
   { to: '/shop/headwear', label: 'Headwear' },
   { to: '/shop/accessories', label: 'Accessories' },
+  { to: '/shop/tank-tops', label: 'Tank Tops' },
+  { to: '/shop/denim-trousers', label: 'Denim Trousers' },
   { to: '/about', label: 'About' },
 ]
 
@@ -44,7 +46,7 @@ export default function Header() {
         </button>
 
         <nav className="hidden lg:flex items-center gap-8">
-          {navLinks.slice(0, 3).map((link) => (
+          {navLinks.slice(0, 5).map((link) => (
             <NavLink
               key={link.to}
               to={link.to}
@@ -71,7 +73,7 @@ export default function Header() {
 
         <div className="flex items-center gap-1 md:gap-2">
           <nav className="hidden lg:flex items-center gap-8 mr-4">
-            {navLinks.slice(3).map((link) => (
+            {navLinks.slice(5).map((link) => (
               <NavLink
                 key={link.to}
                 to={link.to}
