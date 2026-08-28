@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Mail, Phone, MessageCircle } from 'lucide-react'
+import { Mail, Phone, MessageCircle, CheckCircle2, AlertCircle } from 'lucide-react'
 import SEO from '../components/SEO'
+import { supabase } from '../lib/supabase'
 
 const IconInstagram = (props) => (
   <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.5" {...props}>
@@ -11,7 +12,52 @@ const IconInstagram = (props) => (
 )
 
 export default function Contact() {
-  const [sent, setSent] = useState(false)
+  const [form, setForm] = useState({
+    name: '',
+    email: '',
+    subject: '',
+    message: '',
+    website: '',
+  })
+  const [sending, setSending] = useState(false)
+  const [result, setResult] = useState(null)
+
+  const handleChange = (e) => {
+    const { name, value } = e.target
+    setForm((prev) => ({ ...prev, [name]: value }))
+    if (result) setResult(null)
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (sending) return
+
+    setSending(true)
+    setResult(null)
+
+    try {
+      const { data, error } = await supabase.functions.invoke('send-contact-message', {
+        body: form,
+      })
+
+      if (error) throw error
+      if (data?.error) throw new Error(data.error)
+
+      setResult({
+        type: 'success',
+        message: 'Thank you. Your message has been sent successfully. We’ll get back to you soon.',
+      })
+      setForm({ name: '', email: '', subject: '', message: '', website: '' })
+    } catch (error) {
+      console.error('Contact form error:', error)
+      setResult({
+        type: 'error',
+        message: error?.message || "We couldn't send your message. Please try again or email us directly at info@aurablazecreative.com.",
+      })
+    } finally {
+      setSending(false)
+    }
+  }
 
   return (
     <div className="max-w-[1400px] mx-auto px-5 md:px-8 py-14 md:py-20">
@@ -26,21 +72,82 @@ export default function Contact() {
       </p>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_400px] gap-14">
-        <form
-          onSubmit={(e) => { e.preventDefault(); setSent(true) }}
-          className="space-y-4 max-w-lg"
-        >
-          <div className="grid grid-cols-2 gap-4">
-            <input required placeholder="Name" className="border border-hairline px-4 py-3.5 text-sm focus:outline-none focus:border-blaze" />
-            <input required type="email" placeholder="Email" className="border border-hairline px-4 py-3.5 text-sm focus:outline-none focus:border-blaze" />
+        <form onSubmit={handleSubmit} className="space-y-4 max-w-lg" noValidate>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <input
+              required
+              name="name"
+              value={form.name}
+              onChange={handleChange}
+              placeholder="Name"
+              autoComplete="name"
+              className="border border-hairline px-4 py-3.5 text-sm focus:outline-none focus:border-blaze"
+            />
+            <input
+              required
+              type="email"
+              name="email"
+              value={form.email}
+              onChange={handleChange}
+              placeholder="Email"
+              autoComplete="email"
+              className="border border-hairline px-4 py-3.5 text-sm focus:outline-none focus:border-blaze"
+            />
           </div>
-          <input placeholder="Subject" className="w-full border border-hairline px-4 py-3.5 text-sm focus:outline-none focus:border-blaze" />
-          <textarea required rows={5} placeholder="Message" className="w-full border border-hairline px-4 py-3.5 text-sm focus:outline-none focus:border-blaze resize-none" />
+          <input
+            name="subject"
+            value={form.subject}
+            onChange={handleChange}
+            placeholder="Subject"
+            className="w-full border border-hairline px-4 py-3.5 text-sm focus:outline-none focus:border-blaze"
+          />
+          <textarea
+            required
+            name="message"
+            value={form.message}
+            onChange={handleChange}
+            rows={5}
+            placeholder="Message"
+            className="w-full border border-hairline px-4 py-3.5 text-sm focus:outline-none focus:border-blaze resize-none"
+          />
+
+          {/* Honeypot anti-spam field. Kept invisible to normal visitors. */}
+          <div className="absolute -left-[9999px]" aria-hidden="true">
+            <label htmlFor="website">Website</label>
+            <input
+              id="website"
+              name="website"
+              value={form.website}
+              onChange={handleChange}
+              tabIndex={-1}
+              autoComplete="off"
+            />
+          </div>
+
+          {result && (
+            <div
+              role="status"
+              className={`flex items-start gap-3 border px-4 py-3.5 text-sm ${
+                result.type === 'success'
+                  ? 'border-green-200 bg-green-50 text-green-800'
+                  : 'border-red-200 bg-red-50 text-red-800'
+              }`}
+            >
+              {result.type === 'success' ? (
+                <CheckCircle2 size={18} className="shrink-0 mt-0.5" />
+              ) : (
+                <AlertCircle size={18} className="shrink-0 mt-0.5" />
+              )}
+              <p>{result.message}</p>
+            </div>
+          )}
+
           <button
             type="submit"
-            className="bg-void text-bone px-8 py-3.5 text-sm tracking-[0.1em] uppercase font-medium hover:bg-blaze transition-colors"
+            disabled={sending}
+            className="bg-void text-bone px-8 py-3.5 text-sm tracking-[0.1em] uppercase font-medium hover:bg-blaze transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            {sent ? 'Message Sent ✓' : 'Send Message'}
+            {sending ? 'Sending…' : 'Send Message'}
           </button>
         </form>
 
