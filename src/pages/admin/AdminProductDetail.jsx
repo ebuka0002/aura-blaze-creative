@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, Link, Navigate, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Save, Plus, X, Upload, Trash2 } from 'lucide-react'
 import {
@@ -17,6 +17,8 @@ import {
 export default function AdminProductDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const fileInputRef = useRef(null)
+
   const [product, setProduct] = useState(null)
   const [variants, setVariants] = useState([])
   const [images, setImages] = useState([])
@@ -31,6 +33,10 @@ export default function AdminProductDetail() {
   const [savingStock, setSavingStock] = useState(null)
 
   const [deletingImageId, setDeletingImageId] = useState(null)
+
+  // Direct Image Upload State
+  const [uploadingDirectImage, setUploadingDirectImage] = useState(false)
+  const [selectedColorForUpload, setSelectedColorForUpload] = useState('')
 
   const [showAddColor, setShowAddColor] = useState(false)
   const [newColor, setNewColor] = useState({ name: '', hex: '#0B0B0C', frontFile: null, backFile: null })
@@ -64,6 +70,12 @@ export default function AdminProductDetail() {
         })
         setVariants(variantData)
         setImages(imageData)
+
+        // Set default selected color for standalone uploads if variants exist
+        const uniqueColors = [...new Set(variantData.map((v) => v.color_name))]
+        if (uniqueColors.length > 0) {
+          setSelectedColorForUpload(uniqueColors[0])
+        }
       })
       .catch((err) => {
         console.error('Failed to load product:', err)
@@ -132,6 +144,33 @@ export default function AdminProductDetail() {
     }
   }
 
+  // Upload standalone images directly
+  const handleDirectImageUpload = async (e) => {
+    const files = Array.from(e.target.files || [])
+    if (!files.length) return
+
+    setUploadingDirectImage(true)
+    try {
+      const uploadedUrls = []
+      for (const file of files) {
+        const url = await uploadProductImage(product.slug, file)
+        uploadedUrls.push(url)
+      }
+
+      const colorName = selectedColorForUpload || 'Default'
+      await createProductImages(id, [{ colorName, urls: uploadedUrls }])
+
+      const freshImages = await fetchProductImagesAdmin(id)
+      setImages(freshImages)
+    } catch (err) {
+      console.error('Failed to upload image:', err)
+      alert('Could not upload picture. Please try again.')
+    } finally {
+      setUploadingDirectImage(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
   const handleAddColor = async (e) => {
     e.preventDefault()
     setAddColorError('')
@@ -157,7 +196,6 @@ export default function AdminProductDetail() {
 
       await createProductImages(id, [{ colorName: newColor.name.trim(), urls }])
 
-      // New color inherits the same size range already used by this product.
       const existingSizes = [...new Set(variants.map((v) => v.size))]
       await createVariants(id, [{ name: newColor.name.trim(), hex: newColor.hex }], existingSizes, 0)
 
@@ -201,6 +239,8 @@ export default function AdminProductDetail() {
   if (notFound) {
     return <Navigate to="/admin/products" replace />
   }
+
+  const availableColors = [...new Set(variants.map((v) => v.color_name))]
 
   return (
     <div className="p-4 md:p-8 max-w-[900px]">
@@ -266,56 +306,36 @@ export default function AdminProductDetail() {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.is_new}
+              onChange={(e) => setForm({ ...form, is_new: e.target.checked })}
+              className="accent-blaze"
+            />
+            "New" badge
+          </label>
 
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={form.is_new}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                is_new: e.target.checked,
-              })
-            }
-            className="accent-blaze"
-          />
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.is_limited_edition}
+              onChange={(e) => setForm({ ...form, is_limited_edition: e.target.checked })}
+              className="accent-blaze"
+            />
+            "Limited Edition" badge
+          </label>
 
-          "New" badge
-        </label>
-
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={form.is_limited_edition}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                is_limited_edition: e.target.checked,
-              })
-            }
-            className="accent-blaze"
-          />
-
-          "Limited Edition" badge
-        </label>
-
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={form.is_active}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                is_active: e.target.checked,
-              })
-            }
-            className="accent-blaze"
-          />
-
-          Visible on storefront
-        </label>
-
-      </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.is_active}
+              onChange={(e) => setForm({ ...form, is_active: e.target.checked })}
+              className="accent-blaze"
+            />
+            Visible on storefront
+          </label>
+        </div>
 
         <div className="flex items-center gap-4 pt-2">
           <button
@@ -329,6 +349,7 @@ export default function AdminProductDetail() {
         </div>
       </form>
 
+      {/* Stock Management Table */}
       <div className="bg-white border border-hairline p-6">
         <h2 className="text-xs tracking-[0.1em] uppercase text-grey mb-4">
           Stock by Color / Size
@@ -383,25 +404,59 @@ export default function AdminProductDetail() {
         </table>
       </div>
 
+      {/* Images & Direct Photo Upload Block */}
       <div className="bg-white border border-hairline p-6 mt-8">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h2 className="text-xs tracking-[0.1em] uppercase text-grey">Images</h2>
-          {!showAddColor && (
+          <div className="flex items-center gap-3">
+            {/* Quick Upload Button */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={handleDirectImageUpload}
+            />
+            {availableColors.length > 0 && (
+              <select
+                value={selectedColorForUpload}
+                onChange={(e) => setSelectedColorForUpload(e.target.value)}
+                className="text-xs border border-hairline px-2 py-1 bg-white focus:outline-none"
+              >
+                {availableColors.map((col) => (
+                  <option key={col} value={col}>
+                    {col}
+                  </option>
+                ))}
+              </select>
+            )}
             <button
               type="button"
-              onClick={() => setShowAddColor(true)}
-              className="flex items-center gap-1.5 text-xs text-blaze hover:underline underline-offset-4"
+              disabled={uploadingDirectImage}
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-1.5 text-xs text-void hover:text-blaze transition-colors disabled:opacity-50 font-medium"
             >
-              <Plus size={13} /> Add Color
+              <Upload size={13} /> {uploadingDirectImage ? 'Uploading…' : 'Upload Photos'}
             </button>
-          )}
+
+            {!showAddColor && (
+              <button
+                type="button"
+                onClick={() => setShowAddColor(true)}
+                className="flex items-center gap-1.5 text-xs text-blaze hover:underline underline-offset-4"
+              >
+                <Plus size={13} /> Add Color Variant
+              </button>
+            )}
+          </div>
         </div>
 
-        {images.length > 0 && (
+        {images.length > 0 ? (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-2">
             {images.map((img) => (
               <div key={img.id} className="relative group">
-                <div className="aspect-[4/5] bg-bone-dim overflow-hidden">
+                <div className="aspect-[4/5] bg-bone-dim overflow-hidden border border-hairline">
                   <img src={img.image_url} alt="" className="w-full h-full object-cover" />
                 </div>
                 <p className="text-[10px] text-grey mt-1 truncate">{img.color_name}</p>
@@ -417,12 +472,14 @@ export default function AdminProductDetail() {
               </div>
             ))}
           </div>
+        ) : (
+          <p className="text-xs text-grey italic mb-2">No photos uploaded yet.</p>
         )}
 
         {showAddColor && (
           <form onSubmit={handleAddColor} className="border border-hairline p-4 mt-4 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs tracking-[0.1em] uppercase text-grey">New Color</h3>
+              <h3 className="text-xs tracking-[0.1em] uppercase text-grey">New Color Variant</h3>
               <button
                 type="button"
                 onClick={() => { setShowAddColor(false); setAddColorError('') }}
