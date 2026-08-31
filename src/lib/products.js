@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { getUsdToNgnRate } from './currency'
+import { fetchTaxonomy } from './taxonomy'
 
 // This layer fetches real products from Supabase and reshapes them to match
 // the exact structure the old mock data used (colors[].images, sizes, etc.)
@@ -14,7 +15,7 @@ function kobo_to_naira(kobo) {
 // `usdRate` is the live USD→NGN rate (Naira per $1); priceUSD is always
 // derived from the real NGN price at read time, never read from a stored
 // column, so it never goes stale as exchange rates move.
-function assembleProduct(product, variants, images, usdRate) {
+function assembleProduct(product, variants, images, usdRate, taxonomy = []) {
   const colorNames = [...new Set(variants.map((v) => v.color_name))]
 
   const colors = colorNames.map((name) => {
@@ -58,11 +59,19 @@ function assembleProduct(product, variants, images, usdRate) {
     product.price_ngn_kobo
   )
 
+  const category = taxonomy.find((c) => c.id === product.category_id || c.slug === product.category)
+  const collection = category?.collections?.find((c) => c.id === product.collection_id)
+
   return {
     id: product.slug,
     dbId: product.id,
     name: product.name,
-    category: product.category,
+    category: category?.slug || product.category,
+    categoryName: category?.name || product.category,
+    categoryId: product.category_id || null,
+    collection: collection?.slug || null,
+    collectionName: collection?.name || null,
+    collectionId: product.collection_id || null,
     priceNGN,
     priceUSD: priceNGN / usdRate,
 
@@ -102,6 +111,8 @@ export async function fetchAllProducts() {
     (p) => p.id
   )
 
+  const taxonomy = await fetchTaxonomy()
+
   const [
     {
       data: variants,
@@ -138,7 +149,8 @@ export async function fetchAllProducts() {
       images.filter(
         (img) => img.product_id === product.id
       ),
-      usdRate
+      usdRate,
+      taxonomy
     )
   )
 }
@@ -165,6 +177,8 @@ export async function fetchProductBySlug(
 
     throw productError
   }
+
+  const taxonomy = await fetchTaxonomy()
 
   const [
     {
@@ -197,6 +211,7 @@ export async function fetchProductBySlug(
     product,
     variants,
     images,
-    usdRate
+    usdRate,
+    taxonomy
   )
 }

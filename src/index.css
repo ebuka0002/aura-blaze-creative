@@ -69,3 +69,14 @@
     animation: none;
   }
 }
+
+/* Shared form control used by admin category/collection management. */
+.field {
+  width: 100%;
+  border: 1px solid rgba(11, 11, 12, 0.14);
+  padding: 0.625rem 0.75rem;
+  font-size: 0.875rem;
+  background: transparent;
+  outline: none;
+}
+.field:focus { border-color: #ff5a1f; }

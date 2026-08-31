@@ -11,12 +11,18 @@ import logoMark from '../assets/logo-transparent.png'
 import heroMobile from '../assets/hero/hero-mobile.jpeg'
 import heroSlide2Placeholder from '../assets/hero/hero-slide-3-model-crop.png'
 import hero from '../assets/hero/hero.jpg'
-import jacket from '../assets/products/jacket.jpg'
-import shirt from '../assets/products/shirt.jpg'
-import cap from '../assets/products/cap.jpg'
-import watch from '../assets/products/watch.jpg'
+import model1 from '../assets/models/model1.jpg'
+import model2 from '../assets/models/model2.jpg'
+import model3 from '../assets/models/model3.jpg'
+import model4 from '../assets/models/model4.jpg'
+import model5 from '../assets/models/model5.jpg'
+import model6 from '../assets/models/model6.jpg'
+import ManagedImageCarousel from '../components/ManagedImageCarousel'
+import { fetchActiveHomepageGallery } from '../lib/homepageGallery'
+import { fetchActiveDailyDrips } from '../lib/dailyDrips'
 import { subscribeToNewsletter } from '../lib/newsletter'
 import { fetchActiveHeroSlides } from '../lib/heroSlides'
+import { fetchTaxonomy } from '../lib/taxonomy'
 // Slide 2 currently uses a reference/placeholder photo (not Aura Blaze's own
 // photography) to demonstrate the GAZU-style layout Ebuka asked for. Swap
 // `image` below for real Aura Blaze photography as soon as it's ready —
@@ -46,30 +52,24 @@ const defaultHeroSlides = [
     cornerLabel: 'NEW COLLECTION 2026',
   },
 ]
-
 const fadeUp = {
   hidden: { opacity: 0, y: 24 },
   show: { opacity: 1, y: 0, transition: { duration: 0.7, ease: [0.25, 0.1, 0.25, 1] } },
 }
 
-const categoryImages = {
-  jackets: jacket,
-  tshirts: shirt,
-  headwear: cap,
-  accessories: watch,
-  'tank-tops': shirt,
-  'denim-trousers': jacket,
-}
-
 export default function Home() {
   const [featured, setFeatured] = useState([])
+  const [collectionProducts, setCollectionProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [heroSlides, setHeroSlides] = useState([])
   const [heroLoading, setHeroLoading] = useState(true)
- const [newsletterEmail, setNewsletterEmail] = useState('')
-const [newsletterSubmitting, setNewsletterSubmitting] = useState(false)
-const [newsletterMessage, setNewsletterMessage] = useState('')
-const [newsletterSuccess, setNewsletterSuccess] = useState(false)
+  const [taxonomy, setTaxonomy] = useState(categories)
+  const [homepageGallery, setHomepageGallery] = useState([])
+  const [dailyDrips, setDailyDrips] = useState([])
+  const [newsletterEmail, setNewsletterEmail] = useState('')
+  const [newsletterSubmitting, setNewsletterSubmitting] = useState(false)
+  const [newsletterMessage, setNewsletterMessage] = useState('')
+  const [newsletterSuccess, setNewsletterSuccess] = useState(false)
 
 const handleNewsletterSubmit = async (e) => {
   e.preventDefault()
@@ -105,8 +105,10 @@ const handleNewsletterSubmit = async (e) => {
 }
 
   useEffect(() => {
+    fetchTaxonomy().then(setTaxonomy).catch((err) => console.error('Failed to load categories:', err))
+
     fetchAllProducts()
-      .then((all) => setFeatured(all.slice(0, 4)))
+      .then((all) => { setCollectionProducts(all); setFeatured(all.slice(0, 4)) })
       .catch((err) => console.error('Failed to load featured products:', err))
       .finally(() => setLoading(false))
 
@@ -114,6 +116,14 @@ const handleNewsletterSubmit = async (e) => {
       .then((slides) => setHeroSlides(slides))
       .catch((err) => console.error('Failed to load homepage banners:', err))
       .finally(() => setHeroLoading(false))
+
+    fetchActiveHomepageGallery()
+      .then(setHomepageGallery)
+      .catch((err) => console.error('Failed to load homepage gallery:', err))
+
+    fetchActiveDailyDrips()
+      .then(setDailyDrips)
+      .catch((err) => console.error('Failed to load daily drips:', err))
   }, [])
 
   return (
@@ -178,7 +188,7 @@ const handleNewsletterSubmit = async (e) => {
         )}
       </motion.section>
 
-      {/* COLLECTION PREVIEWS */}
+      {/* SHOP BY CATEGORY / COLLECTIONS */}
       <motion.section
         variants={fadeUp}
         initial="hidden"
@@ -187,30 +197,115 @@ const handleNewsletterSubmit = async (e) => {
         className="bg-void text-bone py-24 md:py-32"
       >
         <div className="max-w-[1400px] mx-auto px-5 md:px-8">
-          <h2 className="font-display text-3xl md:text-4xl tracking-wide mb-10">Shop by Category</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-5">
-            {categories.map((cat) => (
-              <Link
-                key={cat.id}
-                to={`/shop/${cat.id}`}
-                className="group relative aspect-[3/4] overflow-hidden clip-corner"
-              >
-                <img
-                  src={categoryImages[cat.id]}
-                  alt={cat.name}
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                  loading="lazy"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-void/90 via-void/10 to-transparent" />
-                <div className="absolute bottom-0 left-0 right-0 p-4 md:p-5">
-                  <h3 className="font-display text-xl md:text-2xl tracking-wide">{cat.name}</h3>
-                  <p className="text-bone/60 text-xs mt-1 hidden md:block">{cat.tagline}</p>
+          <h2 className="font-display text-3xl md:text-4xl tracking-wide mb-14">Shop by Category</h2>
+          <div className="space-y-20 md:space-y-28">
+            {taxonomy.map((cat) => {
+              const collections = cat.collections?.slice(0, 4) || []
+              return (
+                <div key={cat.id}>
+                  <div className="flex items-end justify-between gap-4 mb-6 md:mb-8">
+                    <div>
+                      <h3 className="font-display text-2xl md:text-3xl tracking-wide">{cat.name}</h3>
+                      {cat.tagline && <p className="text-bone/50 text-xs md:text-sm mt-1.5">{cat.tagline}</p>}
+                    </div>
+                    <Link
+                      to={`/shop/${cat.slug}/collections`}
+                      className="flex items-center gap-1.5 text-[11px] md:text-xs tracking-[0.1em] uppercase text-bone/70 hover:text-bone transition-colors whitespace-nowrap"
+                    >
+                      View All <ArrowRight size={14} />
+                    </Link>
+                  </div>
+
+                  {collections.length > 0 ? (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-5">
+                      {collections.map((collection) => {
+                        const productImage = collectionProducts.find((p) => p.collectionId === collection.id)?.colors?.[0]?.images?.[0]
+                        const image = collection.image_url || productImage
+                        return (
+                          <Link
+                            key={collection.id}
+                            to={`/shop/${cat.slug}/${collection.slug}`}
+                            className="group relative aspect-[3/4] overflow-hidden clip-corner bg-bone/10"
+                          >
+                            {image ? (
+                              <img
+                                src={image}
+                                alt={collection.name}
+                                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-bone/30 text-xs uppercase tracking-widest px-4 text-center">Collection image coming soon</div>
+                            )}
+                            <div className="absolute inset-0 bg-gradient-to-t from-void/90 via-void/10 to-transparent" />
+                            <div className="absolute bottom-0 left-0 right-0 p-4 md:p-5">
+                              <h4 className="font-display text-lg md:text-xl tracking-wide">{collection.name}</h4>
+                            </div>
+                          </Link>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <div className="border border-white/10 py-10 text-center text-bone/40 text-sm">No collections yet.</div>
+                  )}
                 </div>
-              </Link>
-            ))}
+              )
+            })}
           </div>
         </div>
       </motion.section>
+
+      {/* HOMEPAGE IMAGE CAROUSEL */}
+      <motion.section
+        variants={fadeUp}
+        initial="hidden"
+        whileInView="show"
+        viewport={{ once: true, margin: '-100px' }}
+        className="py-20 md:py-28 overflow-hidden"
+      >
+        <ManagedImageCarousel
+          items={homepageGallery}
+          fallbackItems={[
+            { title: 'Designed in Lagos', img: model1 },
+            { title: 'Cut for the oversized silhouette', img: model2 },
+            { title: 'Made to outlast the trend', img: model3 },
+            { title: 'Made to outlast the trend', img: model4 },
+            { title: 'Made to outlast the trend', img: model5 },
+            { title: 'Made to outlast the trend', img: model6 },
+          ]}
+        />
+      </motion.section>
+
+      {/* DAILY DRIP */}
+      {dailyDrips.length > 0 && (
+        <motion.section
+          variants={fadeUp}
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, margin: '-100px' }}
+          className="max-w-[1400px] mx-auto px-5 md:px-8 pb-24 md:pb-32"
+        >
+          <div className="flex items-end justify-between gap-4 mb-10">
+            <div>
+              <p className="text-xs tracking-[0.15em] uppercase text-grey mb-2">Style Journal</p>
+              <h2 className="font-display text-3xl md:text-4xl tracking-wide">Daily Drip</h2>
+            </div>
+            <Link to="/daily-drip" className="flex items-center gap-1.5 text-[11px] md:text-xs tracking-[0.1em] uppercase hover:text-blaze transition-colors whitespace-nowrap">
+              View More <ArrowRight size={14} />
+            </Link>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-5">
+            {dailyDrips.slice(0, 2).map((drip) => (
+              <Link key={drip.id} to="/daily-drip" className="group block overflow-hidden rounded-[4px]">
+                <div className="aspect-[3/4] overflow-hidden bg-bone-dim">
+                  <img src={drip.image_url} alt={drip.caption || 'Aura Blaze Daily Drip'} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" loading="lazy" />
+                </div>
+                {drip.caption && <p className="text-sm mt-3">{drip.caption}</p>}
+              </Link>
+            ))}
+          </div>
+        </motion.section>
+      )}
 
       {/* NEWSLETTER */}
       <motion.section

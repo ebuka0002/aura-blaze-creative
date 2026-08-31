@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, Link, Navigate, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Save, Plus, X, Upload, Trash2 } from 'lucide-react'
+import { fetchTaxonomy } from '../../lib/taxonomy'
 import {
   fetchAllProductsAdmin,
   fetchProductVariantsAdmin,
@@ -24,6 +25,8 @@ export default function AdminProductDetail() {
   const [images, setImages] = useState([])
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
+  const [loadError, setLoadError] = useState('')
+  const [taxonomy, setTaxonomy] = useState([])
 
   const [form, setForm] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -47,23 +50,31 @@ export default function AdminProductDetail() {
 
   useEffect(() => {
     setLoading(true)
+    setNotFound(false)
+    setLoadError('')
     Promise.all([
       fetchAllProductsAdmin(),
       fetchProductVariantsAdmin(id),
       fetchProductImagesAdmin(id),
+      fetchTaxonomy(),
     ])
-      .then(([allProducts, variantData, imageData]) => {
+      .then(([allProducts, variantData, imageData, tax]) => {
         const p = allProducts.find((x) => x.id === id)
         if (!p) {
           setNotFound(true)
           return
         }
         setProduct(p)
+        setTaxonomy(tax)
+        const matchedCategory = tax.find((c) => c.slug === p.category || c.id === p.category_id)
         setForm({
           name: p.name,
           description: p.description || '',
           material: p.material || '',
           priceNGN: p.price_ngn_kobo / 100,
+          category: p.category || '',
+          category_id: p.category_id || matchedCategory?.id || '',
+          collection_id: p.collection_id || '',
           is_new: p.is_new,
           is_limited_edition: p.is_limited_edition || false,
           is_active: p.is_active,
@@ -71,7 +82,7 @@ export default function AdminProductDetail() {
         setVariants(variantData)
         setImages(imageData)
 
-        // Set default selected color for standalone uploads if variants exist
+        // Set default selected color for direct uploads if variants exist
         const uniqueColors = [...new Set(variantData.map((v) => v.color_name))]
         if (uniqueColors.length > 0) {
           setSelectedColorForUpload(uniqueColors[0])
@@ -79,7 +90,7 @@ export default function AdminProductDetail() {
       })
       .catch((err) => {
         console.error('Failed to load product:', err)
-        setNotFound(true)
+        setLoadError(err?.message || 'Could not load this product.')
       })
       .finally(() => setLoading(false))
   }, [id])
@@ -94,6 +105,9 @@ export default function AdminProductDetail() {
         description: form.description,
         material: form.material,
         price_ngn_kobo: Math.round(form.priceNGN * 100),
+        category: form.category,
+        category_id: form.category_id || null,
+        collection_id: form.collection_id || null,
         is_new: form.is_new,
         is_limited_edition: form.is_limited_edition,
         is_active: form.is_active,
@@ -144,7 +158,7 @@ export default function AdminProductDetail() {
     }
   }
 
-  // Upload standalone images directly
+  // Handle direct standalone photo uploads attached to a color
   const handleDirectImageUpload = async (e) => {
     const files = Array.from(e.target.files || [])
     if (!files.length) return
@@ -205,6 +219,13 @@ export default function AdminProductDetail() {
       ])
       setVariants(newVariants)
       setImages(newImages)
+      
+      // Update select menu options if a new color was added
+      const uniqueColors = [...new Set(newVariants.map((v) => v.color_name))]
+      if (uniqueColors.length > 0 && !selectedColorForUpload) {
+        setSelectedColorForUpload(uniqueColors[0])
+      }
+
       setNewColor({ name: '', hex: '#0B0B0C', frontFile: null, backFile: null })
       setShowAddColor(false)
     } catch (err) {
@@ -240,6 +261,25 @@ export default function AdminProductDetail() {
     return <Navigate to="/admin/products" replace />
   }
 
+  if (loadError) {
+    return (
+      <div className="p-4 md:p-8 max-w-[900px]">
+        <Link to="/admin/products" className="flex items-center gap-1.5 text-sm text-grey hover:text-blaze mb-6 w-fit">
+          <ArrowLeft size={15} /> Back to Products
+        </Link>
+        <div className="bg-white border border-hairline p-6">
+          <h1 className="font-display text-2xl tracking-wide mb-2">Couldn’t load this product</h1>
+          <p className="text-sm text-grey">{loadError}</p>
+          <p className="text-xs text-grey mt-3">Check the browser console and your Supabase admin RLS policies for products, variants, and images.</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!product || !form) {
+    return <div className="p-8"><p className="text-grey text-sm">Loading product…</p></div>
+  }
+
   const availableColors = [...new Set(variants.map((v) => v.color_name))]
 
   return (
@@ -270,6 +310,36 @@ export default function AdminProductDetail() {
             className="w-full border border-hairline px-3 py-2.5 text-sm focus:outline-none focus:border-blaze"
           />
         </div>
+
+        <div>
+          <label className="text-xs text-grey block mb-1.5">Category</label>
+          <select
+            value={form.category_id || ''}
+            onChange={(e) => {
+              const categoryId = e.target.value
+              const cat = taxonomy.find((c) => c.id === categoryId)
+              setForm({ ...form, category_id: categoryId, category: cat?.slug || form.category, collection_id: '' })
+            }}
+            className="w-full border border-hairline px-3 py-2.5 text-sm focus:outline-none focus:border-blaze"
+          >
+            <option value="">Choose a category</option>
+            {taxonomy.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </div>
+
+        {taxonomy.find((c) => c.id === form.category_id)?.collections?.length > 0 && (
+          <div>
+            <label className="text-xs text-grey block mb-1.5">Collection</label>
+            <select
+              value={form.collection_id || ''}
+              onChange={(e) => setForm({ ...form, collection_id: e.target.value })}
+              className="w-full border border-hairline px-3 py-2.5 text-sm focus:outline-none focus:border-blaze"
+            >
+              <option value="">No collection</option>
+              {taxonomy.find((c) => c.id === form.category_id)?.collections.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+        )}
 
         <div>
           <label className="text-xs text-grey block mb-1.5">Description</label>
@@ -409,7 +479,7 @@ export default function AdminProductDetail() {
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h2 className="text-xs tracking-[0.1em] uppercase text-grey">Images</h2>
           <div className="flex items-center gap-3">
-            {/* Quick Upload Button */}
+            {/* Quick Upload Button & File Input */}
             <input
               ref={fileInputRef}
               type="file"

@@ -31,6 +31,7 @@ import Terms from './pages/Terms'
 import NotFound from './pages/NotFound'
 import AdminLogin from './pages/admin/AdminLogin'
 import AdminProducts from './pages/admin/AdminProducts'
+import AdminCategories from './pages/admin/AdminCategories'
 import AdminProductDetail from './pages/admin/AdminProductDetail'
 import AdminProductNew from './pages/admin/AdminProductNew'
 import AdminOrders from './pages/admin/AdminOrders'
@@ -40,6 +41,9 @@ import AdminDiscountForm from './pages/admin/AdminDiscountForm'
 import AdminSubscribers from './pages/admin/AdminSubscribers'
 import AdminBroadcast from './pages/admin/AdminBroadcast'
 import AdminHomeBanners from './pages/admin/AdminHomeBanners'
+import AdminHomepageGallery from './pages/admin/AdminHomepageGallery'
+import AdminDailyDrip from './pages/admin/AdminDailyDrip'
+import DailyDrip from './pages/DailyDrip'
 import Unsubscribe from './pages/Unsubscribe'
 
 function ScrollToTop() {
@@ -84,6 +88,7 @@ export default function App() {
           >
             <Route index element={<AdminProducts />} />
             <Route path="products" element={<AdminProducts />} />
+            <Route path="categories" element={<AdminCategories />} />
             <Route path="products/new" element={<AdminProductNew />} />
             <Route path="products/:id" element={<AdminProductDetail />} />
             <Route path="orders" element={<AdminOrders />} />
@@ -94,6 +99,8 @@ export default function App() {
             <Route path="subscribers" element={<AdminSubscribers />} />
             <Route path="broadcast" element={<AdminBroadcast />} />
             <Route path="homepage-banners" element={<AdminHomeBanners />} />
+            <Route path="homepage-gallery" element={<AdminHomepageGallery />} />
+            <Route path="daily-drip" element={<AdminDailyDrip />} />
           </Route>
         </Routes>
       ) : (
@@ -101,6 +108,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/shop" element={<Shop />} />
+            <Route path="/shop/:category/:collection" element={<Shop />} />
             <Route path="/shop/:category" element={<Shop />} />
             <Route path="/product/:id" element={<Product />} />
             <Route path="/cart" element={<Cart />} />
@@ -111,6 +119,7 @@ export default function App() {
             <Route path="/account/confirm" element={<ConfirmEmail />} />
             <Route path="/account/orders" element={<AccountOrders />} />
             <Route path="/account/orders/:id" element={<AccountOrderDetail />} />
+            <Route path="/daily-drip" element={<DailyDrip />} />
             <Route path="/about" element={<About />} />
             <Route path="/contact" element={<Contact />} />
             <Route path="/faq" element={<FAQ />} />

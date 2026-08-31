@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, NavLink, Outlet } from 'react-router-dom'
-import { Package, ShoppingBag, Send, Tag, Mail, Image, LogOut, Menu, X } from 'lucide-react'
+import { Package, ShoppingBag, Send, Tag, Mail, Image, Images, FolderTree, LogOut, Menu, X } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 
 const navLinkClass = ({ isActive }) =>
@@ -16,6 +16,15 @@ export default function AdminLayout() {
     <>
       <NavLink to="/admin/homepage-banners" className={navLinkClass} onClick={onNavigate}>
         <Image size={16} /> Homepage Banners
+      </NavLink>
+      <NavLink to="/admin/homepage-gallery" className={navLinkClass} onClick={onNavigate}>
+        <Images size={16} /> Homepage Carousel
+      </NavLink>
+      <NavLink to="/admin/daily-drip" className={navLinkClass} onClick={onNavigate}>
+        <Image size={16} /> Daily Drip
+      </NavLink>
+      <NavLink to="/admin/categories" className={navLinkClass} onClick={onNavigate}>
+        <FolderTree size={16} /> Categories
       </NavLink>
       <NavLink to="/admin/products" className={navLinkClass} onClick={onNavigate}>
         <Package size={16} /> Products

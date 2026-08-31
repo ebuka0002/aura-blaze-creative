@@ -130,8 +130,15 @@ function getNigeriaPostalCode(stateName) {
 const CATEGORY_WEIGHTS_KG = {
   jackets: 0.6,
   tshirts: 0.3,
+  shirts: 0.35,
   headwear: 0.15,
   accessories: 0.2,
+  jorts: 0.55,
+  trousers: 0.55,
+  'quarter-zip': 0.45,
+  'up-and-down': 0.8,
+  joggers: 0.5,
+  'tank-tops': 0.25,
 };
 
 const DEFAULT_WEIGHT_KG = 0.3;

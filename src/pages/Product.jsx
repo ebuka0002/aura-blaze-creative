@@ -51,7 +51,7 @@ export default function Product() {
         setReviews(productReviews)
         return fetchAllProducts().then((all) => {
           if (cancelled) return
-          setRelated(all.filter((x) => x.category === p.category && x.id !== p.id).slice(0, 4))
+          setRelated(all.filter((x) => x.category === p.category && (!p.collection || x.collection === p.collection) && x.id !== p.id).slice(0, 4))
         })
       })
       .catch((err) => {
@@ -142,7 +142,8 @@ export default function Product() {
       <div className="text-xs text-grey mb-6 flex gap-1.5">
         <Link to="/shop" className="hover:text-blaze">Shop</Link>
         <span>/</span>
-        <Link to={`/shop/${product.category}`} className="hover:text-blaze capitalize">{product.category}</Link>
+        <Link to={`/shop/${product.category}`} className="hover:text-blaze">{product.categoryName || product.category}</Link>
+        {product.collection && <><span>/</span><Link to={`/shop/${product.category}/${product.collection}`} className="hover:text-blaze">{product.collectionName || product.collection}</Link></>}
         <span>/</span>
         <span className="text-void">{product.name}</span>
       </div>

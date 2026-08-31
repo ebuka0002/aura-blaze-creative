@@ -144,13 +144,15 @@ export async function createProductImages(productId, colorImages) {
   if (error) throw error
 }
 
-export async function createProduct({ name, slug, category, description, material, priceNGN }) {
+export async function createProduct({ name, slug, category, categoryId, collectionId, description, material, priceNGN }) {
   const { data, error } = await supabase
     .from('products')
     .insert({
       name,
       slug,
       category,
+      category_id: categoryId || null,
+      collection_id: collectionId || null,
       description,
       material,
       price_ngn_kobo: Math.round(priceNGN * 100),

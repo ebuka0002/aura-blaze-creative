@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { ArrowLeft, Plus, X, Upload } from 'lucide-react'
 import {
@@ -7,7 +7,8 @@ import {
   createProductImages,
   uploadProductImage,
 } from '../../lib/adminProducts'
-import { categories } from '../../data/products'
+import { categories as fallbackCategories } from '../../data/products'
+import { fetchTaxonomy } from '../../lib/taxonomy'
 
 const ALL_SIZES = ['S', 'M', 'L', 'XL', 'XXL', 'One Size']
 
@@ -49,9 +50,11 @@ function ColorImageInput({ label, file, onChange }) {
 
 export default function AdminProductNew() {
   const navigate = useNavigate()
+  const [taxonomy, setTaxonomy] = useState(fallbackCategories)
   const [form, setForm] = useState({
     name: '',
-    category: categories[0]?.id || 'tshirts',
+    category: fallbackCategories[0]?.id || 'tshirts',
+    collectionId: '',
     description: '',
     material: '',
     priceNGN: '',
@@ -59,6 +62,12 @@ export default function AdminProductNew() {
   const [colors, setColors] = useState([emptyColor()])
   const [sizes, setSizes] = useState(['S', 'M', 'L', 'XL', 'XXL'])
   const [startingStock, setStartingStock] = useState(10)
+
+  useEffect(() => {
+    fetchTaxonomy().then(setTaxonomy).catch((err) => console.error('Failed to load categories:', err))
+  }, [])
+
+  const selectedCategory = taxonomy.find((c) => c.slug === form.category || c.id === form.category)
 
   const [saving, setSaving] = useState(false)
   const [progress, setProgress] = useState('')
@@ -106,6 +115,8 @@ export default function AdminProductNew() {
         name: form.name.trim(),
         slug,
         category: form.category,
+        categoryId: selectedCategory?.id || null,
+        collectionId: form.collectionId || null,
         description: form.description.trim(),
         material: form.material.trim(),
         priceNGN: Number(form.priceNGN),
@@ -179,14 +190,30 @@ export default function AdminProductNew() {
             <label className="text-xs text-grey block mb-1.5">Category</label>
             <select
               value={form.category}
-              onChange={(e) => setForm({ ...form, category: e.target.value })}
+              onChange={(e) => setForm({ ...form, category: e.target.value, collectionId: '' })}
               className="w-full border border-hairline px-3 py-2.5 text-sm focus:outline-none focus:border-blaze"
             >
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
+              {taxonomy.map((c) => (
+                <option key={c.id} value={c.slug}>{c.name}</option>
               ))}
             </select>
           </div>
+
+          {selectedCategory?.collections?.length > 0 && (
+            <div>
+              <label className="text-xs text-grey block mb-1.5">Collection</label>
+              <select
+                value={form.collectionId}
+                onChange={(e) => setForm({ ...form, collectionId: e.target.value })}
+                className="w-full border border-hairline px-3 py-2.5 text-sm focus:outline-none focus:border-blaze"
+              >
+                <option value="">No collection</option>
+                {selectedCategory.collections.map((collection) => (
+                  <option key={collection.id} value={collection.id}>{collection.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div>
             <label className="text-xs text-grey block mb-1.5">Description</label>
