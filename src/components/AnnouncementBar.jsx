@@ -1,4 +1,4 @@
-const MESSAGE = 'Free delivery in Lagos on orders above ₦50,000 — New drop: Coming Soon'
+const MESSAGE = 'New drop: Coming Soon'
 
 export default function AnnouncementBar() {
   return (

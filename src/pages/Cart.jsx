@@ -13,7 +13,8 @@ export default function Cart() {
   const [promoInput, setPromoInput] = useState('')
   const format = currency === 'NGN' ? formatNGN : formatUSD
 
-  const shipping = items.length === 0 ? 0 : subtotal > (currency === 'NGN' ? 50000 : 65) ? 0 : (currency === 'NGN' ? 3500 : 12)
+  // Shipping is calculated during checkout after the customer provides delivery details.
+  const shipping = 0
 
   const handleApplyPromo = async (e) => {
     e.preventDefault()
@@ -136,12 +137,12 @@ export default function Cart() {
             )}
             <div className="flex justify-between text-grey">
               <span>Shipping</span>
-              <span className="text-void font-medium">{shipping === 0 ? 'Free' : format(shipping)}</span>
+              <span className="text-void font-medium">Calculated at checkout</span>
             </div>
           </div>
           <div className="flex justify-between border-t border-hairline mt-4 pt-4 font-medium text-base">
             <span>Total</span>
-            <span>{format(subtotal - discountAmount + shipping)}</span>
+            <span>{format(subtotal - discountAmount)}</span>
           </div>
 
           <Link

@@ -25,7 +25,7 @@ const fadeUp = {
 
 const carouselItems = [
   {
-    title: 'Designed in Lagos',
+    title: 'Designed in Eastern Nigeria',
     img: model1,
   },
   {
@@ -105,7 +105,7 @@ export default function About() {
     <div>
       <SEO
         title="About Us"
-        description="The story behind Aura Blaze Creative — timeless, distinct, iconic streetwear designed in Lagos for Nigerian and international customers."
+        description="The story behind Aura Blaze Creative — timeless, distinct, iconic streetwear designed in the eastern part of Nigeria for Nigerian and international customers."
         path="/about"
       />
 
@@ -152,7 +152,7 @@ export default function About() {
         </h2>
 
         <p className="text-grey leading-relaxed text-[15px] md:text-base">
-          Aura Blaze Creative started in Lagos with a rejection of noise. We build for the
+          Aura Blaze Creative started in the eastern part of Nigeria with a rejection of noise. We build for the
           version of luxury that doesn't need a logo shouting across the chest — the version
           that shows up in the weight of the fabric, the cut of a sleeve, the way a jacket
           sits when you walk into a room. Every piece is designed to be worn for years, not

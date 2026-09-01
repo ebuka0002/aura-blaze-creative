@@ -146,10 +146,7 @@ const handleNewsletterSubmit = async (e) => {
             TIMELESS. DISTINCT. ICONIC.
           </h2>
           <p className="text-grey leading-relaxed text-[15px] md:text-base">
-            Aura Blaze Creative was built on a simple idea: luxury doesn't need to be loud.
-            Every piece is designed in Lagos, cut for an oversized silhouette, and made to
-            outlast the trend cycle. This is streetwear stripped to what matters —
-            weight, fit, and a mark you'll recognize from across the room.
+            Aura Blaze Creative was built on a simple idea: luxury doesn't need to be loud. With every piece designed in Eastern Nigeria  🇳🇬,Each piece blends refined simplicity, distinctive design,Made to outlast the trend cycle for those who move with confidence and stand apart effortlessly.
           </p>
         </div>
       </motion.section>
@@ -266,7 +263,7 @@ const handleNewsletterSubmit = async (e) => {
         <ManagedImageCarousel
           items={homepageGallery}
           fallbackItems={[
-            { title: 'Designed in Lagos', img: model1 },
+            { title: 'Designed in Eastern Nigeria', img: model1 },
             { title: 'Cut for the oversized silhouette', img: model2 },
             { title: 'Made to outlast the trend', img: model3 },
             { title: 'Made to outlast the trend', img: model4 },

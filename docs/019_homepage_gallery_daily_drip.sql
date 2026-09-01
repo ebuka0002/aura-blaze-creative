@@ -67,7 +67,7 @@ create policy "Admins can delete daily drips" on daily_drips
 -- These files are included in the project under /public/models/.
 insert into homepage_gallery (image_url, title, sort_order, is_active)
 select * from (values
-  ('/models/model1.jpg', 'Designed in Lagos', 0, true),
+  ('/models/model1.jpg', 'Designed in Eastern Nigeria', 0, true),
   ('/models/model2.jpg', 'Cut for the oversized silhouette', 1, true),
   ('/models/model3.jpg', 'Made to outlast the trend', 2, true),
   ('/models/model4.jpg', 'Made to outlast the trend', 3, true),

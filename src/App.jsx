@@ -8,6 +8,7 @@ import Header from './components/Header'
 import Footer from './components/Footer'
 import CartDrawer from './components/CartDrawer'
 import WhatsAppButton from './components/WhatsAppButton'
+import ShoppingBackButton from './components/ShoppingBackButton'
 import RequireAdmin from './components/admin/RequireAdmin'
 import AdminLayout from './components/admin/AdminLayout'
 import Home from './pages/Home'
@@ -60,6 +61,7 @@ function StorefrontLayout({ children }) {
       <AnnouncementBar />
       <Header />
       <CartDrawer />
+      <ShoppingBackButton />
       <main>{children}</main>
       <Footer />
       <WhatsAppButton />

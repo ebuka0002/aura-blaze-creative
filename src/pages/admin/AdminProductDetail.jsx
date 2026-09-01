@@ -534,7 +534,7 @@ export default function AdminProductDetail() {
                   type="button"
                   onClick={() => handleDeleteImage(img.id)}
                   disabled={deletingImageId === img.id}
-                  className="absolute top-1.5 right-1.5 bg-void/80 text-bone p-1.5 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-60"
+                  className="absolute top-2 right-2 bg-void/85 text-bone p-2 md:p-1.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity disabled:opacity-60 touch-manipulation"
                   aria-label="Remove photo"
                 >
                   <Trash2 size={13} />

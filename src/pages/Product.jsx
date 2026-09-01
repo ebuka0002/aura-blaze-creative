@@ -1,6 +1,6 @@
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
-import { Star, Ruler, X, Check, ArrowLeft } from 'lucide-react'
+import { Star, Ruler, X, Check } from 'lucide-react'
 import { formatNGN, formatUSD, getProductImages } from '../data/products'
 import { fetchProductBySlug, fetchAllProducts } from '../lib/products'
 import { useCart } from '../context/CartContext'
@@ -134,9 +134,6 @@ export default function Product() {
         path={`/product/${product.id}`}
         type="product"
       />
-      <button type="button" onClick={() => { if (window.history.length > 1) navigate(-1); else navigate('/shop') }} className="flex items-center gap-1.5 text-sm text-grey hover:text-blaze transition-colors mb-5 w-fit">
-        <ArrowLeft size={15} /> Back
-      </button>
 
       {/* breadcrumb */}
       <div className="text-xs text-grey mb-6 flex gap-1.5">

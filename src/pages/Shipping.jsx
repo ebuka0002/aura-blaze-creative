@@ -11,13 +11,12 @@ export default function Shipping() {
     <div className="max-w-[800px] mx-auto px-5 md:px-8 py-14 md:py-20">
       <SEO
         title="Shipping Policy"
-        description="Delivery timelines and costs from Aura Blaze Creative — Lagos, nationwide Nigeria, and international shipping."
+        description="Delivery timelines and costs from Aura Blaze Creative — nationwide Nigeria and international shipping."
         path="/shipping"
       />
       <h1 className="font-display text-5xl md:text-6xl tracking-wide mb-3">Shipping Policy</h1>
       <p className="text-grey mb-12 leading-relaxed">
-        We ship across Nigeria and internationally. Orders above ₦50,000 (or $65) qualify
-        for free standard delivery within Nigeria.
+        We ship across Nigeria and internationally. Shipping costs are calculated based on your delivery destination and selected shipping method.
       </p>
 
       <table className="w-full text-sm mb-12">

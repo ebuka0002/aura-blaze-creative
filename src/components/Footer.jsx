@@ -68,7 +68,7 @@ const handleSubmit = async (e) => {
           <div>
             <span className="font-display text-3xl tracking-[0.08em]">AURA BLAZE</span>
             <p className="text-white/50 text-sm mt-4 leading-relaxed max-w-xs">
-              …embrace luxury with ease. Premium, minimalist streetwear for Lagos and beyond.
+              …embrace luxury with ease. Premium, minimalist streetwear from the eastern part of Nigeria and beyond.
             </p>
             <div className="flex gap-4 mt-6">
               <a href="#" aria-label="Instagram" className="text-white/60 hover:text-blaze-bright transition-colors">

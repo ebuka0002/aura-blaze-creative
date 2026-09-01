@@ -59,7 +59,7 @@ export default function AdminHomepageGallery() {
         </label>
         <label className="block">
           <span className="text-xs text-grey block mb-1.5">Optional caption</span>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full border border-hairline px-3 py-2.5 text-sm focus:outline-none focus:border-blaze" placeholder="Designed in Lagos" />
+          <input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full border border-hairline px-3 py-2.5 text-sm focus:outline-none focus:border-blaze" placeholder="Designed in Eastern Nigeria" />
         </label>
         <button type="submit" disabled={saving} className="flex items-center gap-2 bg-void text-bone px-6 py-3 text-sm hover:bg-blaze disabled:opacity-50"><ImagePlus size={16} />{saving ? 'Adding…' : 'Add to Carousel'}</button>
       </form>

@@ -63,9 +63,9 @@ export default function ProductCard({ product }) {
         )}
       </div>
 
-      <div className="mt-3.5 flex items-start justify-between gap-2">
-        <div>
-          <h3 className="text-sm font-medium leading-snug">{product.name}</h3>
+      <div className="mt-3.5 flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
+        <div className="min-w-0">
+          <h3 className="text-sm font-medium leading-snug break-words">{product.name}</h3>
           <div className="flex gap-1.5 mt-1.5">
             {product.colors.map((c) => (
               <span
@@ -77,7 +77,7 @@ export default function ProductCard({ product }) {
             ))}
           </div>
         </div>
-        <span className="text-sm font-medium whitespace-nowrap">{price}</span>
+        <span className="text-sm font-medium whitespace-nowrap self-start sm:shrink-0">{price}</span>
       </div>
     </Link>
   )
