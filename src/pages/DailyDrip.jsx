@@ -28,13 +28,13 @@ export default function DailyDrip() {
       </div>
 
       {loading ? (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4 md:gap-6">
           {[...Array(8)].map((_, i) => <div key={i} className="aspect-[3/4] bg-bone-dim animate-pulse" />)}
         </div>
       ) : drips.length === 0 ? (
         <div className="py-24 text-center text-grey">No daily drips posted yet.</div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4 md:gap-6">
           {drips.map((drip) => (
             <article key={drip.id}>
               <div className="aspect-[3/4] overflow-hidden bg-bone-dim">
