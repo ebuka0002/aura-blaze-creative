@@ -593,7 +593,7 @@ postalCode: form.postalCode,
             {submitting ? 'Redirecting to Paystack…' : 'Place Order'}
           </button>
           <p className="text-[11px] text-grey text-center mt-3">
-            You'll be redirected to Paystack to complete payment securely. (Test mode — no real money is charged.)
+            You'll be redirected to Paystack to complete payment securely. 
           </p>
         </div>
       </form>

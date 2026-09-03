@@ -423,7 +423,7 @@ const parcelItems = items.map((item) => {
     // -----------------------------------------------------
 
     const terminalResponse = await fetch(
-      "https://sandbox.terminal.africa/v1/rates/shipment/quotes",
+      "https://api.terminal.africa/v1/rates/shipment/quotes",
       {
         method: "POST",
 

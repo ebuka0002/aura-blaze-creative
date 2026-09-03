@@ -67,5 +67,6 @@ function mapHeroSlide(s) {
     primaryCta: { to: s.primary_cta_to || '/shop', label: s.primary_cta_label || 'Shop Now' },
     secondaryCta: { to: s.secondary_cta_to || '/shop', label: s.secondary_cta_label || 'Explore' },
     cornerLabel: s.corner_label || '',
+    templateData: s.template_data || {},
   }
 }
