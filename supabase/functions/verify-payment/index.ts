@@ -1,10 +1,9 @@
 // Supabase Edge Function: verify-payment
 //
-// Called by the frontend after Paystack redirects the customer back to our
-// site. We NEVER trust the redirect alone (that's spoofable — someone could
-// craft a fake "success" URL by hand). Instead, this function asks Paystack
-// directly, server-to-server, "did this transaction actually succeed?" and
-// only then marks the order as paid.
+// Verifies the Paystack transaction server-to-server, confirms the order is
+// paid, and then ensures a Terminal Africa shipment is booked. Shipment
+// booking is independently idempotent/retryable: a temporary Terminal error
+// does not leave a paid order permanently unshippable.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.49.4'
 import { buildOrderConfirmationEmail } from '../_shared/emailTemplate.ts'
@@ -18,75 +17,69 @@ const ORDER_EMAIL_FROM = Deno.env.get('ORDER_EMAIL_FROM') || 'Aura Blaze Creativ
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  })
 }
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const { reference } = await req.json()
-
-    if (!reference) {
-      return new Response(JSON.stringify({ error: 'reference is required' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+    if (!PAYSTACK_SECRET_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      return jsonResponse({ error: 'Payment verification is not fully configured on the server.' }, 500)
     }
+
+    const { reference } = await req.json()
+    if (!reference) return jsonResponse({ error: 'reference is required' }, 400)
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
     const paystackRes = await fetch(
       `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
-      {
-        headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` },
-      }
+      { headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` } },
     )
-
     const paystackData = await paystackRes.json()
 
     if (!paystackRes.ok || !paystackData.status) {
       console.error('Paystack verify failed:', paystackData)
-      return new Response(JSON.stringify({ error: 'Could not verify transaction' }), {
-        status: 502,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+      return jsonResponse({ error: 'Could not verify transaction' }, 502)
     }
 
     const transaction = paystackData.data
     const isSuccessful = transaction.status === 'success'
 
-    // Find the order this reference belongs to.
     const { data: order, error: orderError } = await supabase
       .from('orders')
-      .select('id, order_number, total, subtotal, shipping_cost, currency, status, customer_name, customer_email, shipping_address, shipping_rate_id, shipping_shipment_id')
+      .select(`
+        id, order_number, total, subtotal, shipping_cost, currency, status,
+        customer_name, customer_email, shipping_address,
+        shipping_rate_id, shipping_shipment_id,
+        courier_shipment_id, courier_tracking_number, courier_tracking_url,
+        courier_name, courier_label_url, courier_booking_status
+      `)
       .eq('paystack_reference', reference)
       .single()
 
-    if (orderError || !order) {
-      return new Response(JSON.stringify({ error: 'Order not found for this reference' }), {
-        status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
+    if (orderError || !order) return jsonResponse({ error: 'Order not found for this reference' }, 404)
 
-    // Defense in depth: confirm the amount actually paid matches what the
-    // order expects, not just that *a* payment succeeded. Prevents a
-    // scenario where a manipulated reference somehow points to a real but
-    // mismatched successful transaction.
     const amountMatches = transaction.amount === order.total
     const paid = isSuccessful && amountMatches
 
-    // Atomically mark the order paid AND find out whether THIS call was the
-    // one that actually made the change, in a single database operation.
-    // This matters because verify-payment can legitimately be called more
-    // than once for the same order (React StrictMode double-invokes effects
-    // in dev; in production a slow network or re-render can trigger the
-    // same race) — doing "read status, then later write status" as two
-    // separate steps left a window where two near-simultaneous calls could
-    // both see 'pending' and both think they were first, sending two
-    // emails. A single atomic UPDATE closes that window.
+    if (isSuccessful && !amountMatches) {
+      console.error('Paystack amount mismatch:', {
+        reference,
+        transactionAmount: transaction.amount,
+        orderTotal: order.total,
+      })
+      return jsonResponse({ error: 'Payment amount does not match the order total.' }, 400)
+    }
+
     let isFirstConfirmation = false
     if (paid) {
       const { data: wasFirst, error: confirmError } = await supabase.rpc('confirm_order_paid', {
@@ -94,15 +87,11 @@ Deno.serve(async (req) => {
       })
       if (confirmError) {
         console.error('confirm_order_paid failed:', confirmError)
-      } else {
-        isFirstConfirmation = !!wasFirst
+        return jsonResponse({ error: 'Payment was verified, but the order could not be confirmed. Please retry.' }, 500)
       }
+      isFirstConfirmation = !!wasFirst
     }
 
-    // Include the order's line items in the response. This page is reached
-    // via a fresh browser navigation from Paystack's site — no React state
-    // survives that trip — so the frontend has no other way to know what
-    // was purchased in order to show post-purchase review prompts.
     let items = []
     let rawOrderItems = []
     if (paid) {
@@ -114,19 +103,14 @@ Deno.serve(async (req) => {
       if (itemsError) {
         console.error('Failed to fetch order items for confirmation page:', itemsError)
       } else {
-        rawOrderItems = orderItems
-        // Reviews everywhere else on the site are keyed by product SLUG
-        // (e.g. "signature-tee"), not the database UUID — order_items only
-        // stores the UUID, so we need to look up each product's slug to
-        // keep review keys consistent with how the product page reads them.
-        const productIds = [...new Set(orderItems.map((i) => i.product_id).filter(Boolean))]
-        const { data: products } = await supabase
-          .from('products')
-          .select('id, slug')
-          .in('id', productIds)
+        rawOrderItems = orderItems || []
+        const productIds = [...new Set(rawOrderItems.map((i) => i.product_id).filter(Boolean))]
+        const { data: products } = productIds.length
+          ? await supabase.from('products').select('id, slug').in('id', productIds)
+          : { data: [] }
         const slugById = Object.fromEntries((products || []).map((p) => [p.id, p.slug]))
 
-        items = orderItems.map((item) => ({
+        items = rawOrderItems.map((item) => ({
           key: item.id,
           id: slugById[item.product_id] || item.product_id,
           orderItemId: item.id,
@@ -139,11 +123,6 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Send the confirmation email — only on the FIRST time this order is
-    // confirmed paid, never on repeat calls (e.g. if the customer refreshes
-    // the confirmation page). This is best-effort: if sending fails, we log
-    // it but don't fail the whole request — the payment already succeeded
-    // and the order is correctly marked paid regardless of email delivery.
     if (isFirstConfirmation && RESEND_API_KEY && order.customer_email) {
       try {
         const html = buildOrderConfirmationEmail({ order, items: rawOrderItems })
@@ -160,22 +139,30 @@ Deno.serve(async (req) => {
             html,
           }),
         })
-        if (!emailRes.ok) {
-          const errBody = await emailRes.text()
-          console.error('Resend email send failed:', emailRes.status, errBody)
-        }
+        if (!emailRes.ok) console.error('Resend email send failed:', emailRes.status, await emailRes.text())
       } catch (emailErr) {
         console.error('Failed to send order confirmation email:', emailErr)
       }
     }
 
-    // Book the real courier pickup — only on first confirmation, same
-    // reasoning as the email above (never double-book a pickup if this
-    // function gets called more than once for the same order). Best-effort:
-    // if this fails, the order is still correctly marked paid; Ebuka can
-    // manually arrange pickup as a fallback, and the failure is logged for
-    // follow-up rather than silently lost.
-    if (isFirstConfirmation && order.shipping_rate_id && order.shipping_shipment_id) {
+    // IMPORTANT: Do not gate this on isFirstConfirmation. If Terminal is
+    // temporarily unavailable on the first verification, a later verification
+    // must be able to retry the booking. shipping-book-pickup itself provides
+    // the atomic claim that prevents duplicate external bookings.
+    let shippingBooking = {
+      attempted: false,
+      success: !!order.courier_shipment_id,
+      bookingInProgress: false,
+      error: null,
+      shipmentId: order.courier_shipment_id,
+      trackingNumber: order.courier_tracking_number,
+      trackingUrl: order.courier_tracking_url,
+      courierName: order.courier_name,
+      labelUrl: order.courier_label_url,
+    }
+
+    if (paid && !order.courier_shipment_id && order.shipping_rate_id && order.shipping_shipment_id) {
+      shippingBooking.attempted = true
       try {
         const pickupRes = await fetch(`${SUPABASE_URL}/functions/v1/shipping-book-pickup`, {
           method: 'POST',
@@ -183,35 +170,38 @@ Deno.serve(async (req) => {
             Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            orderId: order.id,
-            rateId: order.shipping_rate_id,
-            shipmentId: order.shipping_shipment_id,
-          }),
+          body: JSON.stringify({ orderId: order.id }),
         })
-        if (!pickupRes.ok) {
-          const errBody = await pickupRes.text()
-          console.error('Courier pickup booking failed:', pickupRes.status, errBody)
+        const pickupData = await pickupRes.json()
+        if (!pickupRes.ok || !pickupData.success) {
+          shippingBooking.error = pickupData.error || 'Shipment booking is pending and will need a retry.'
+          shippingBooking.bookingInProgress = !!pickupData.bookingInProgress
+        } else {
+          shippingBooking.success = true
+          shippingBooking.shipmentId = pickupData.shipmentId || null
+          shippingBooking.trackingNumber = pickupData.trackingNumber || null
+          shippingBooking.trackingUrl = pickupData.trackingUrl || null
+          shippingBooking.courierName = pickupData.courierName || null
+          shippingBooking.labelUrl = pickupData.labelUrl || null
         }
       } catch (pickupErr) {
-        console.error('Failed to book courier pickup:', pickupErr)
+        console.error('Failed to invoke shipping-book-pickup:', pickupErr)
+        shippingBooking.error = pickupErr instanceof Error ? pickupErr.message : 'Shipment booking failed.'
       }
     }
 
-    return new Response(
-      JSON.stringify({
-        success: paid,
-        orderNumber: order.order_number,
-        status: paid ? 'paid' : order.status,
-        items,
-      }),
-      { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+    // A paid order remains paid even if the external courier API is briefly
+    // unavailable. The failed booking is stored by shipping-book-pickup and
+    // can be retried safely without charging the customer again.
+    return jsonResponse({
+      success: paid,
+      orderNumber: order.order_number,
+      status: paid ? 'paid' : order.status,
+      items,
+      shippingBooking,
+    })
   } catch (err) {
     console.error('verify-payment error:', err)
-    return new Response(JSON.stringify({ error: 'Internal server error' }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    return jsonResponse({ error: 'Internal server error' }, 500)
   }
 })

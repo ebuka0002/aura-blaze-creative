@@ -1,141 +1,230 @@
 // Supabase Edge Function: shipping-book-pickup
 //
-// Actually books the courier pickup with the real carrier via Terminal
-// Africa, using a previously-selected rate_id. This should only be called
-// AFTER payment is confirmed (see verify-payment) — booking a real courier
-// pickup for an unpaid order would be a real, costly mistake.
+// Books the real Terminal Africa shipment only after Paystack has confirmed
+// payment. The function claims the order atomically before calling Terminal,
+// so repeated verify-payment requests cannot double-book the same order.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.49.4'
 
 const TERMINAL_SECRET_KEY = Deno.env.get('TERMINAL_SECRET_KEY')
-// See shipping-rates/index.ts for why this must match the same
-// test/live host as wherever the shipment was originally created.
-const TERMINAL_API_BASE_URL = Deno.env.get('TERMINAL_API_BASE_URL') || 'https://sandbox.terminal.africa/v1'
+const TERMINAL_API_BASE_URL = Deno.env.get('TERMINAL_API_BASE_URL') || 'https://api.terminal.africa/v1'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  })
+}
+
+async function readJson(response: Response) {
+  const text = await response.text()
+  try {
+    return JSON.parse(text)
+  } catch {
+    return { message: text }
+  }
 }
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders })
-  }
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    const { orderId, rateId, shipmentId } = await req.json()
-
-    if (!orderId || !rateId) {
-      return new Response(JSON.stringify({ error: 'Missing orderId or rateId' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+    if (!TERMINAL_SECRET_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      return jsonResponse({ error: 'Shipping booking is not fully configured on the server.' }, 500)
     }
+
+    const { orderId } = await req.json()
+    if (!orderId) return jsonResponse({ error: 'Missing orderId' }, 400)
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-    // Safety check: only book a real pickup for an order that's actually
-    // paid. This is the real backstop against accidentally paying to book
-    // pickups for unpaid/fake orders, in case this gets called at the
-    // wrong time by a bug elsewhere.
-    const { data: order, error: orderError } = await supabase
+    const { data: currentOrder, error: readError } = await supabase
       .from('orders')
-      .select('id, status, courier_shipment_id')
+      .select('id, status, shipping_rate_id, shipping_shipment_id, courier_shipment_id, courier_booking_status, courier_tracking_url, courier_name')
       .eq('id', orderId)
       .single()
 
-    if (orderError || !order) {
-      return new Response(JSON.stringify({ error: 'Order not found' }), {
-        status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    if (readError || !currentOrder) return jsonResponse({ error: 'Order not found' }, 404)
+    if (currentOrder.status !== 'paid') {
+      return jsonResponse({ error: `Refusing to book shipment for order with status "${currentOrder.status}".` }, 400)
+    }
+    if (currentOrder.courier_shipment_id) {
+      return jsonResponse({
+        success: true,
+        alreadyBooked: true,
+        shipmentId: currentOrder.courier_shipment_id,
+        trackingUrl: currentOrder.courier_tracking_url,
+        courierName: currentOrder.courier_name,
       })
     }
-
-    if (order.status !== 'paid') {
-      return new Response(
-        JSON.stringify({ error: `Refusing to book a pickup for an order with status "${order.status}".` }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+    if (!currentOrder.shipping_rate_id || !currentOrder.shipping_shipment_id) {
+      return jsonResponse({
+        error: 'Order is paid but is missing the Terminal rate or draft shipment ID.',
+      }, 409)
     }
 
-    // Avoid double-booking if this somehow gets called twice for the same order.
-    if (order.courier_shipment_id) {
-      return new Response(
-        JSON.stringify({ success: true, alreadyBooked: true, shipmentId: order.courier_shipment_id }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    const pickupRes = await fetch(`${TERMINAL_API_BASE_URL}/shipments/pickup`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${TERMINAL_SECRET_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        rate_id: rateId,
-        // shipmentId will be undefined here — shipping-rates now uses
-        // Terminal's "Get Quotes for Shipment" endpoint (persist_data:
-        // true), which returns a usable rate_id directly without creating
-        // a draft shipment first. JSON.stringify drops undefined keys, so
-        // this simply omits shipment_id from the request — which is
-        // correct per Terminal's docs: "If shipment_id is not provided, a
-        // new shipment is generated automatically."
-        shipment_id: shipmentId,
-      }),
-    })
-
-    const pickupData = await pickupRes.json()
-    if (!pickupRes.ok || !pickupData.status) {
-      console.error('Terminal pickup booking failed:', pickupData)
-      return new Response(
-        JSON.stringify({ error: pickupData.message || 'Could not book courier pickup.' }),
-        { status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
-    // Log the full response the first few times this runs for real — the
-    // exact field names here weren't fully confirmable from Terminal's
-    // public docs (their pickup-response example was cut off before
-    // showing the shipment's own id/carrier/tracking fields). Field access
-    // below checks multiple plausible names defensively; if courier_name/
-    // courier_tracking_url end up null on a real successful booking, check
-    // this log line to see the actual shape and correct the field names.
-    console.log('Terminal pickup response (for field-name verification):', JSON.stringify(pickupData.data))
-
-    const shipment = pickupData.data
-    const resolvedShipmentId = shipment.shipment_id || shipment.id || shipment.reference || null
-    const resolvedTrackingUrl =
-      shipment.extras?.tracking_url || shipment.tracking_url || shipment.extras?.carrier_tracking_url || null
-    const resolvedCarrierName =
-      (typeof shipment.carrier === 'object' ? shipment.carrier?.name : null) || shipment.carrier_name || null
-
-    // Record the real courier shipment ID + tracking info on the order so
-    // it can be surfaced to the customer and to Ebuka in the admin dashboard.
-    await supabase
+    // Claim this order before calling the external API. Only one concurrent
+    // request can change pending/failed -> booking.
+    const { data: claimRows, error: claimError } = await supabase
       .from('orders')
       .update({
-        courier_shipment_id: resolvedShipmentId,
-        courier_tracking_url: resolvedTrackingUrl,
-        courier_name: resolvedCarrierName,
+        courier_booking_status: 'booking',
+        courier_booking_error: null,
       })
       .eq('id', orderId)
+      .eq('status', 'paid')
+      .is('courier_shipment_id', null)
+      .in('courier_booking_status', ['pending', 'failed'])
+      .select('id')
 
-    return new Response(
-      JSON.stringify({
+    if (claimError) {
+      console.error('Failed to claim courier booking:', claimError)
+      return jsonResponse({ error: 'Could not reserve shipment booking.' }, 500)
+    }
+
+    if (!claimRows?.length) {
+      const { data: latest } = await supabase
+        .from('orders')
+        .select('courier_shipment_id, courier_booking_status, courier_tracking_url, courier_name')
+        .eq('id', orderId)
+        .single()
+
+      if (latest?.courier_shipment_id) {
+        return jsonResponse({
+          success: true,
+          alreadyBooked: true,
+          shipmentId: latest.courier_shipment_id,
+          trackingUrl: latest.courier_tracking_url,
+          courierName: latest.courier_name,
+        })
+      }
+
+      return jsonResponse({
+        success: false,
+        bookingInProgress: latest?.courier_booking_status === 'booking',
+        error: latest?.courier_booking_status === 'booking'
+          ? 'Shipment booking is already in progress.'
+          : 'Shipment booking could not be claimed. Please retry.',
+      }, 409)
+    }
+
+    try {
+      const pickupRes = await fetch(`${TERMINAL_API_BASE_URL}/shipments/pickup`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${TERMINAL_SECRET_KEY}`,
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          rate_id: currentOrder.shipping_rate_id,
+          shipment_id: currentOrder.shipping_shipment_id,
+        }),
+      })
+
+      const pickupData = await readJson(pickupRes)
+      if (!pickupRes.ok || !pickupData.status) {
+        const message = pickupData.message || 'Terminal could not arrange the shipment.'
+        console.error('Terminal pickup booking failed:', pickupData)
+        await supabase
+          .from('orders')
+          .update({
+            courier_booking_status: 'failed',
+            courier_booking_error: message,
+          })
+          .eq('id', orderId)
+          .is('courier_shipment_id', null)
+        return jsonResponse({ error: message }, 502)
+      }
+
+      const shipment = pickupData.data || {}
+      const resolvedShipmentId = shipment.shipment_id || shipment.id || null
+      const trackingUrl = shipment.extras?.tracking_url || shipment.tracking_url || null
+      const trackingNumber = shipment.extras?.tracking_number || shipment.tracking_number || null
+      const courierName =
+        (typeof shipment.carrier === 'object' ? shipment.carrier?.name : null) ||
+        shipment.carrier_name ||
+        null
+      const labelUrl =
+        shipment.extras?.label_url ||
+        shipment.extras?.label ||
+        shipment.label_url ||
+        null
+
+      if (!resolvedShipmentId) {
+        const message = 'Terminal confirmed the booking but did not return a shipment ID.'
+        await supabase
+          .from('orders')
+          .update({ courier_booking_status: 'failed', courier_booking_error: message })
+          .eq('id', orderId)
+        return jsonResponse({ error: message }, 502)
+      }
+
+      const { error: saveError } = await supabase
+        .from('orders')
+        .update({
+          courier_shipment_id: resolvedShipmentId,
+          courier_tracking_url: trackingUrl,
+          courier_tracking_number: trackingNumber,
+          courier_name: courierName,
+          courier_label_url: labelUrl,
+          courier_booking_status: 'booked',
+          courier_booking_error: null,
+          courier_booked_at: new Date().toISOString(),
+        })
+        .eq('id', orderId)
+        .is('courier_shipment_id', null)
+
+      if (saveError) {
+        console.error('Terminal booking succeeded but saving shipment failed:', saveError)
+        return jsonResponse({
+          success: true,
+          warning: 'Shipment was booked at Terminal, but the local order record could not be updated.',
+          shipmentId: resolvedShipmentId,
+          trackingUrl,
+        }, 200)
+      }
+
+      console.log('Terminal shipment booked:', JSON.stringify({
+        orderId,
+        shipmentId: resolvedShipmentId,
+        trackingNumber,
+        trackingUrl,
+        courierName,
+      }))
+
+      return jsonResponse({
         success: true,
         shipmentId: resolvedShipmentId,
-        trackingUrl: resolvedTrackingUrl,
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    )
+        trackingNumber,
+        trackingUrl,
+        courierName,
+        labelUrl,
+      })
+    } catch (bookingError) {
+      const message = bookingError instanceof Error ? bookingError.message : 'Unexpected Terminal booking error.'
+      await supabase
+        .from('orders')
+        .update({
+          courier_booking_status: 'failed',
+          courier_booking_error: message,
+        })
+        .eq('id', orderId)
+        .is('courier_shipment_id', null)
+      throw bookingError
+    }
   } catch (err) {
-    console.error('shipping-book-pickup function error:', err.message)
-    return new Response(JSON.stringify({ error: err.message || 'Unexpected error' }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    console.error('shipping-book-pickup function error:', err)
+    return jsonResponse({
+      error: err instanceof Error ? err.message : 'Unexpected shipping booking error.',
+    }, 500)
   }
 })
