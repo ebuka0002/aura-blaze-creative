@@ -75,37 +75,96 @@ const NIGERIA_STATE_POSTAL_CODES: Record<string, string> = {
   yobe: "620001", zamfara: "880001",
 };
 
-const NIGERIA_STATE_CANONICAL: Record<string, string> = {
-  fct: "Abuja",
-  "federal capital territory": "Abuja",
-  abuja: "Abuja",
-};
-
-const NIGERIA_CITY_CANONICAL: Record<string, string> = {
-  portharcourt: "Port Harcourt",
-  "port harcourt": "Port Harcourt",
-  "port-harcourt": "Port Harcourt",
-  "port harcourt city": "Port Harcourt",
-  benin: "Benin City",
-  "benin city": "Benin City",
-};
-
-function normalizeNigeriaState(stateName: string | undefined) {
-  const raw = (stateName || "").trim();
-  const key = raw.toLowerCase().replace(/\s+/g, " ");
-  return NIGERIA_STATE_CANONICAL[key] || raw;
-}
-
-function normalizeNigeriaCity(cityName: string | undefined) {
-  const raw = (cityName || "").trim();
-  const key = raw.toLowerCase().replace(/\s+/g, " ");
-  return NIGERIA_CITY_CANONICAL[key] || raw;
-}
-
 function getNigeriaPostalCode(stateName: string | undefined) {
   if (!stateName) return "100001";
-  const key = stateName.trim().toLowerCase();
-  return NIGERIA_STATE_POSTAL_CODES[key] || (key === "federal capital territory" ? "900001" : "100001");
+  return NIGERIA_STATE_POSTAL_CODES[stateName.trim().toLowerCase()] || "100001";
+}
+
+const NIGERIA_CITY_ALIASES: Record<string, { city: string; postalCode?: string; locality?: string }> = {
+  // Abuja/FCT districts and suburbs. Terminal expects the service city as Abuja;
+  // keep the selected district as a locality in line2 for delivery context.
+  kubwa: { city: "Abuja", postalCode: "901101", locality: "Kubwa" },
+  "dutse alhaji": { city: "Abuja", postalCode: "901101", locality: "Dutse Alhaji" },
+  gwarinpa: { city: "Abuja", postalCode: "900108", locality: "Gwarinpa" },
+  jabi: { city: "Abuja", postalCode: "900108", locality: "Jabi" },
+  wuse: { city: "Abuja", postalCode: "900281", locality: "Wuse" },
+  maitama: { city: "Abuja", postalCode: "900271", locality: "Maitama" },
+  asokoro: { city: "Abuja", postalCode: "900231", locality: "Asokoro" },
+  garki: { city: "Abuja", postalCode: "900231", locality: "Garki" },
+  lugbe: { city: "Abuja", postalCode: "900107", locality: "Lugbe" },
+  utako: { city: "Abuja", postalCode: "900211", locality: "Utako" },
+  nyanya: { city: "Abuja", postalCode: "900103", locality: "Nyanya" },
+  karu: { city: "Abuja", postalCode: "900110", locality: "Karu" },
+  bwari: { city: "Abuja", postalCode: "901101", locality: "Bwari" },
+  kuje: { city: "Abuja", postalCode: "903101", locality: "Kuje" },
+  abuja: { city: "Abuja", postalCode: "900001" },
+};
+
+const NIGERIA_CITY_SPELLING_ALIASES: Record<string, string> = {
+  "benin": "Benin",
+  "benin city": "Benin",
+  "portharcourt": "Port Harcourt",
+  "port harcourt": "Port Harcourt",
+  "port-harcourt": "Port Harcourt",
+  "ph": "Port Harcourt",
+  "onitsha": "Onitsha",
+  "aba": "Aba",
+  "owerri": "Owerri",
+  "ibadan": "Ibadan",
+  "ikeja": "Ikeja",
+  "lagos": "Lagos",
+  "kano": "Kano",
+  "kaduna": "Kaduna",
+  "enugu": "Enugu",
+  "asaba": "Asaba",
+  "akure": "Akure",
+  "jos": "Jos",
+  "ilorin": "Ilorin",
+  "minna": "Minna",
+  "yola": "Yola",
+  "calabar": "Calabar",
+  "uyo": "Uyo",
+  "makurdi": "Makurdi",
+  "sokoto": "Sokoto",
+  "gombe": "Gombe",
+  "jalingo": "Jalingo",
+  "damaturu": "Damaturu",
+  "gusau": "Gusau",
+  "lokoja": "Lokoja",
+  "lafia": "Lafia",
+  "abeokuta": "Abeokuta",
+  "benin city": "Benin",
+};
+
+function canonicalizeNigeriaCity(city: string, state: string) {
+  const key = String(city || "").trim().toLowerCase().replace(/\s+/g, " ");
+  const stateKey = String(state || "").trim().toLowerCase();
+  if (["fct", "federal capital territory", "abuja"].includes(stateKey)) {
+    if (NIGERIA_CITY_ALIASES[key]) return NIGERIA_CITY_ALIASES[key].city;
+    if (NIGERIA_CITY_SPELLING_ALIASES[key]) return NIGERIA_CITY_SPELLING_ALIASES[key];
+    return city.trim();
+  }
+  return NIGERIA_CITY_SPELLING_ALIASES[key] || city.trim();
+}
+
+function normalizeNigeriaDeliveryAddress(address: any) {
+  if (resolveCountryCode(address.country) !== "NG") return address;
+
+  const stateKey = String(address.state || "").trim().toLowerCase();
+  const cityKey = String(address.city || "").trim().toLowerCase().replace(/\s+/g, " ");
+  const stateIsAbuja = ["fct", "federal capital territory", "abuja"].includes(stateKey);
+  const alias = stateIsAbuja ? NIGERIA_CITY_ALIASES[cityKey] : null;
+  const canonicalCity = canonicalizeNigeriaCity(address.city, address.state);
+
+  if (!alias && canonicalCity === String(address.city || '').trim()) return address;
+
+  return {
+    ...address,
+    city: alias?.city || canonicalCity,
+    state: stateIsAbuja ? "Abuja" : address.state,
+    postalCode: address.postalCode || alias?.postalCode || getNigeriaPostalCode(stateIsAbuja ? "Abuja" : address.state),
+    line2: address.line2 || alias?.locality || "",
+  };
 }
 
 const CATEGORY_WEIGHTS_KG: Record<string, number> = {
@@ -167,17 +226,15 @@ Deno.serve(async (req) => {
     }
 
     const country = resolveCountryCode(deliveryAddress.country);
-    const normalizedState =
-      country === "NG" ? normalizeNigeriaState(deliveryAddress.state) : (deliveryAddress.state || "").trim();
-    const normalizedCity =
-      country === "NG" ? normalizeNigeriaCity(deliveryAddress.city) : (deliveryAddress.city || "").trim();
+    const normalizedDeliveryAddress =
+      country === "NG" ? normalizeNigeriaDeliveryAddress(deliveryAddress) : deliveryAddress;
 
     const deliveryZip =
-      deliveryAddress.postalCode ||
-      deliveryAddress.zip ||
-      (country === "NG" ? getNigeriaPostalCode(normalizedState) : "");
+      normalizedDeliveryAddress.postalCode ||
+      normalizedDeliveryAddress.zip ||
+      (country === "NG" ? getNigeriaPostalCode(normalizedDeliveryAddress.state) : "");
 
-    if (!deliveryAddress.address || !deliveryAddress.city || !deliveryAddress.state || !deliveryAddress.phone) {
+    if (!normalizedDeliveryAddress.address || !normalizedDeliveryAddress.city || !normalizedDeliveryAddress.state || !normalizedDeliveryAddress.phone) {
       return jsonResponse({ error: "A complete delivery address is required." }, 400);
     }
     if (!deliveryZip) {
@@ -185,10 +242,10 @@ Deno.serve(async (req) => {
     }
 
     const delivery = {
-      line1: deliveryAddress.address,
-      line2: deliveryAddress.line2 || "",
-      city: normalizedCity,
-      state: normalizedState,
+      line1: normalizedDeliveryAddress.address,
+      line2: normalizedDeliveryAddress.line2 || "",
+      city: normalizedDeliveryAddress.city,
+      state: normalizedDeliveryAddress.state,
       country,
       zip: deliveryZip,
       first_name: deliveryAddress.firstName || "Customer",
