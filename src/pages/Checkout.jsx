@@ -11,6 +11,32 @@ import { updateProfile } from '../lib/auth'
 import { validateDiscountCode, calculateDiscountAmount, markDiscountUsed } from '../lib/discounts'
 import { fetchShippingRates } from '../lib/shipping'
 import { COUNTRIES, getCallingCode } from '../data/countries'
+import { NIGERIA_STATES, getCitiesForState } from '../data/nigeriaLocations'
+
+
+const NIGERIA_STATE_SET = new Set(NIGERIA_STATES.map((s) => s.toLowerCase()))
+const NIGERIA_CITY_ALIASES = {
+  'portharcourt': 'Port Harcourt',
+  'port harcourt': 'Port Harcourt',
+  'p.h': 'Port Harcourt',
+  'benin': 'Benin City',
+  'benin city': 'Benin City',
+  'uyo': 'Uyo',
+  'aba': 'Aba',
+  'onitsha': 'Onitsha',
+  'owerri': 'Owerri',
+  'ibadan': 'Ibadan',
+  'abuja': 'Abuja',
+}
+function normalizeNigeriaAddress(form) {
+  if ((form.country || '').trim().toLowerCase() !== 'nigeria') return form
+  const state = NIGERIA_STATES.find((s) => s.toLowerCase() === form.state.trim().toLowerCase()) || form.state.trim()
+  const cities = getCitiesForState(state)
+  const cityKey = form.city.trim().toLowerCase().replace(/\s+/g, ' ')
+  const alias = NIGERIA_CITY_ALIASES[cityKey] || NIGERIA_CITY_ALIASES[cityKey.replace(/\s/g, '')]
+  const city = cities.find((x) => x.toLowerCase() === cityKey) || cities.find((x) => x.toLowerCase() === (alias || '').toLowerCase()) || form.city.trim()
+  return { ...form, state, city }
+}
 
 const initialForm = {
   email: '',
@@ -64,6 +90,9 @@ export default function Checkout() {
     setForm((prev) => ({
       ...prev,
       country: countryName,
+      ...(countryName.trim().toLowerCase() === 'nigeria'
+        ? { state: '', city: '', postalCode: '' }
+        : { state: prev.state, city: prev.city }),
       // Only prefill the phone field if it's genuinely empty — never
       // overwrite a number the customer already started typing. If they
       // switch countries after typing a number, that's on them to adjust.
@@ -129,6 +158,7 @@ postalCode: prev.postalCode || addr.postalCode || '',
     setSelectedRateId(null)
 
     try {
+      const shippingForm = normalizeNigeriaAddress(form)
       const { shipmentId, rates } = await fetchShippingRates({
         deliveryAddress: {
   address: form.address,
@@ -425,21 +455,58 @@ postalCode: form.postalCode,
   className="col-span-2 border border-hairline px-4 py-3.5 text-sm focus:outline-none focus:border-blaze"
 />
 
-<input
-  required
-  placeholder="City"
-  value={form.city}
-  onChange={updateField('city')}
-  className="border border-hairline px-4 py-3.5 text-sm focus:outline-none focus:border-blaze"
-/>
+{form.country.trim().toLowerCase() === 'nigeria' ? (
+  <>
+    <select
+      required
+      value={form.state}
+      onChange={(e) => {
+        const state = e.target.value
+        setForm((prev) => ({ ...prev, state, city: '' }))
+        setShippingRates([])
+        setSelectedRateId(null)
+        setShippingShipmentId(null)
+        setRatesErr(null)
+      }}
+      className="border border-hairline px-4 py-3.5 text-sm focus:outline-none focus:border-blaze bg-bone"
+    >
+      <option value="" disabled>Select state</option>
+      {NIGERIA_STATES.map((state) => (
+        <option key={state} value={state}>{state}</option>
+      ))}
+    </select>
 
-<input
-  required
-  placeholder="State / Region"
-  value={form.state}
-  onChange={updateField('state')}
-  className="border border-hairline px-4 py-3.5 text-sm focus:outline-none focus:border-blaze"
-/>
+    <select
+      required
+      value={form.city}
+      onChange={updateField('city')}
+      disabled={!form.state}
+      className="border border-hairline px-4 py-3.5 text-sm focus:outline-none focus:border-blaze bg-bone disabled:opacity-50"
+    >
+      <option value="" disabled>{form.state ? 'Select city' : 'Select state first'}</option>
+      {getCitiesForState(form.state).map((city) => (
+        <option key={city} value={city}>{city}</option>
+      ))}
+    </select>
+  </>
+) : (
+  <>
+    <input
+      required
+      placeholder="City"
+      value={form.city}
+      onChange={updateField('city')}
+      className="border border-hairline px-4 py-3.5 text-sm focus:outline-none focus:border-blaze"
+    />
+    <input
+      required
+      placeholder="State / Region"
+      value={form.state}
+      onChange={updateField('state')}
+      className="border border-hairline px-4 py-3.5 text-sm focus:outline-none focus:border-blaze"
+    />
+  </>
+)}
 
 <div className="col-span-2 sm:col-span-1">
   <input

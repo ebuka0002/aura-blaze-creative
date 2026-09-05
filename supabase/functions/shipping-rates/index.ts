@@ -75,9 +75,37 @@ const NIGERIA_STATE_POSTAL_CODES: Record<string, string> = {
   yobe: "620001", zamfara: "880001",
 };
 
+const NIGERIA_STATE_CANONICAL: Record<string, string> = {
+  fct: "Abuja",
+  "federal capital territory": "Abuja",
+  abuja: "Abuja",
+};
+
+const NIGERIA_CITY_CANONICAL: Record<string, string> = {
+  portharcourt: "Port Harcourt",
+  "port harcourt": "Port Harcourt",
+  "port-harcourt": "Port Harcourt",
+  "port harcourt city": "Port Harcourt",
+  benin: "Benin City",
+  "benin city": "Benin City",
+};
+
+function normalizeNigeriaState(stateName: string | undefined) {
+  const raw = (stateName || "").trim();
+  const key = raw.toLowerCase().replace(/\s+/g, " ");
+  return NIGERIA_STATE_CANONICAL[key] || raw;
+}
+
+function normalizeNigeriaCity(cityName: string | undefined) {
+  const raw = (cityName || "").trim();
+  const key = raw.toLowerCase().replace(/\s+/g, " ");
+  return NIGERIA_CITY_CANONICAL[key] || raw;
+}
+
 function getNigeriaPostalCode(stateName: string | undefined) {
   if (!stateName) return "100001";
-  return NIGERIA_STATE_POSTAL_CODES[stateName.trim().toLowerCase()] || "100001";
+  const key = stateName.trim().toLowerCase();
+  return NIGERIA_STATE_POSTAL_CODES[key] || (key === "federal capital territory" ? "900001" : "100001");
 }
 
 const CATEGORY_WEIGHTS_KG: Record<string, number> = {
@@ -139,10 +167,15 @@ Deno.serve(async (req) => {
     }
 
     const country = resolveCountryCode(deliveryAddress.country);
+    const normalizedState =
+      country === "NG" ? normalizeNigeriaState(deliveryAddress.state) : (deliveryAddress.state || "").trim();
+    const normalizedCity =
+      country === "NG" ? normalizeNigeriaCity(deliveryAddress.city) : (deliveryAddress.city || "").trim();
+
     const deliveryZip =
       deliveryAddress.postalCode ||
       deliveryAddress.zip ||
-      (country === "NG" ? getNigeriaPostalCode(deliveryAddress.state) : "");
+      (country === "NG" ? getNigeriaPostalCode(normalizedState) : "");
 
     if (!deliveryAddress.address || !deliveryAddress.city || !deliveryAddress.state || !deliveryAddress.phone) {
       return jsonResponse({ error: "A complete delivery address is required." }, 400);
@@ -154,8 +187,8 @@ Deno.serve(async (req) => {
     const delivery = {
       line1: deliveryAddress.address,
       line2: deliveryAddress.line2 || "",
-      city: deliveryAddress.city,
-      state: deliveryAddress.state,
+      city: normalizedCity,
+      state: normalizedState,
       country,
       zip: deliveryZip,
       first_name: deliveryAddress.firstName || "Customer",
