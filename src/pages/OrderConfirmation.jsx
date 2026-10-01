@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { Check, Star, X, Loader2 } from 'lucide-react'
 import { addReview } from '../data/reviews'
 import { verifyPayment } from '../lib/payments'
+import { bookCourierPickup } from '../lib/shipping'
 import SEO from '../components/SEO'
 
 function ItemReviewRow({ item }) {
@@ -107,6 +108,8 @@ export default function OrderConfirmation() {
   const [verifying, setVerifying] = useState(!!reference)
   const [verifyResult, setVerifyResult] = useState(null)
   const [verifyError, setVerifyError] = useState(null)
+  const [bookingRetrying, setBookingRetrying] = useState(false)
+  const [bookingRetryResult, setBookingRetryResult] = useState(null)
 
   useEffect(() => {
     if (!reference) return
@@ -176,6 +179,37 @@ export default function OrderConfirmation() {
     // Payment verified successfully — show a simpler confirmation, since we
     // don't have the cart's item list on this fresh navigation (no route
     // state survives an external redirect) to offer the review prompts.
+    const shippingBooking = verifyResult.shippingBooking
+    const bookingNeedsRetry = shippingBooking && !shippingBooking.success && !shippingBooking.bookingInProgress
+
+    const retryBooking = async () => {
+      if (!verifyResult.orderId || bookingRetrying) return
+      setBookingRetrying(true)
+      setBookingRetryResult(null)
+      try {
+        const result = await bookCourierPickup({ orderId: verifyResult.orderId })
+        setBookingRetryResult({ success: true, message: result?.alreadyBooked ? 'The shipment was already booked.' : 'Shipment booked successfully.' })
+        setVerifyResult((prev) => ({
+          ...prev,
+          shippingBooking: {
+            ...(prev.shippingBooking || {}),
+            success: true,
+            bookingInProgress: false,
+            error: null,
+            shipmentId: result?.shipmentId || prev.shippingBooking?.shipmentId,
+            trackingNumber: result?.trackingNumber || prev.shippingBooking?.trackingNumber,
+            trackingUrl: result?.trackingUrl || prev.shippingBooking?.trackingUrl,
+            courierName: result?.courierName || prev.shippingBooking?.courierName,
+          },
+        }))
+      } catch (err) {
+        console.error('Terminal booking retry failed:', err)
+        setBookingRetryResult({ success: false, message: err.message || 'Terminal could not book the shipment. Please try again.' })
+      } finally {
+        setBookingRetrying(false)
+      }
+    }
+
     return (
       <div className="max-w-[700px] mx-auto px-5 md:px-8 py-16 md:py-24">
         <SEO title="Payment Confirmed" path="/order-confirmation" noindex />
@@ -188,6 +222,45 @@ export default function OrderConfirmation() {
             Order <span className="text-void font-medium">#{verifyResult.orderNumber}</span> has been paid and received. A confirmation has been sent to your email.
           </p>
         </div>
+
+        {shippingBooking && !shippingBooking.success && (
+          <div className="border border-hairline p-5 mb-10">
+            <p className="font-medium text-sm mb-1">Shipping booking is still pending</p>
+            <p className="text-grey text-sm mb-4">
+              Your payment was successful. The courier booking did not complete yet, so you have not been charged again.
+            </p>
+            {shippingBooking.error && (
+              <p className="text-xs text-grey mb-4">Terminal response: {shippingBooking.error}</p>
+            )}
+            {bookingNeedsRetry && (
+              <button
+                type="button"
+                onClick={retryBooking}
+                disabled={bookingRetrying}
+                className="bg-void text-bone px-5 py-2.5 text-xs tracking-[0.1em] uppercase font-medium hover:bg-blaze transition-colors disabled:opacity-60"
+              >
+                {bookingRetrying ? 'Retrying…' : 'Retry Shipping Booking'}
+              </button>
+            )}
+            {bookingRetryResult && (
+              <p className={`text-xs mt-3 ${bookingRetryResult.success ? 'text-blaze' : 'text-grey'}`}>
+                {bookingRetryResult.message}
+              </p>
+            )}
+          </div>
+        )}
+
+        {shippingBooking?.success && shippingBooking.trackingNumber && (
+          <div className="border border-hairline p-5 mb-10">
+            <p className="font-medium text-sm mb-1">Shipping booked</p>
+            <p className="text-grey text-sm">Tracking number: {shippingBooking.trackingNumber}</p>
+            {shippingBooking.trackingUrl && (
+              <a href={shippingBooking.trackingUrl} target="_blank" rel="noreferrer" className="text-blaze text-sm underline mt-2 inline-block">
+                Track shipment
+              </a>
+            )}
+          </div>
+        )}
 
         {verifyResult.items?.length > 0 && (
           <div className="border-t border-hairline pt-10">

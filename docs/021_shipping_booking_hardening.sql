@@ -5,6 +5,7 @@ alter table orders add column if not exists courier_tracking_number text;
 alter table orders add column if not exists courier_label_url text;
 alter table orders add column if not exists courier_booking_status text not null default 'pending';
 alter table orders add column if not exists courier_booking_error text;
+alter table orders add column if not exists courier_booking_debug jsonb;
 alter table orders add column if not exists courier_booked_at timestamptz;
 
 -- Keep old orders usable. Existing booked shipments are already booked;

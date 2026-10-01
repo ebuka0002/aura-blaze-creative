@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
 
     const { data: currentOrder, error: readError } = await supabase
       .from('orders')
-      .select('id, status, shipping_rate_id, shipping_shipment_id, courier_shipment_id, courier_booking_status, courier_tracking_url, courier_name')
+      .select('id, status, shipping_rate_id, shipping_shipment_id, courier_shipment_id, courier_booking_status, courier_tracking_url, courier_name, courier_booking_error')
       .eq('id', orderId)
       .single()
 
@@ -117,6 +117,18 @@ Deno.serve(async (req) => {
     }
 
     try {
+      const bookingRequest = {
+        rate_id: currentOrder.shipping_rate_id,
+        shipment_id: currentOrder.shipping_shipment_id,
+        purchase_insurance: false,
+      }
+
+      console.log('Terminal pickup booking request:', JSON.stringify({
+        orderId,
+        endpoint: `${TERMINAL_API_BASE_URL}/shipments/pickup`,
+        body: bookingRequest,
+      }))
+
       const pickupRes = await fetch(`${TERMINAL_API_BASE_URL}/shipments/pickup`, {
         method: 'POST',
         headers: {
@@ -124,25 +136,43 @@ Deno.serve(async (req) => {
           'Content-Type': 'application/json',
           Accept: 'application/json',
         },
-        body: JSON.stringify({
-          rate_id: currentOrder.shipping_rate_id,
-          shipment_id: currentOrder.shipping_shipment_id,
-        }),
+        body: JSON.stringify(bookingRequest),
       })
 
       const pickupData = await readJson(pickupRes)
-      if (!pickupRes.ok || !pickupData.status) {
-        const message = pickupData.message || 'Terminal could not arrange the shipment.'
-        console.error('Terminal pickup booking failed:', pickupData)
+      const terminalResponse = {
+        httpStatus: pickupRes.status,
+        httpOk: pickupRes.ok,
+        body: pickupData,
+      }
+      console.log('Terminal pickup booking response:', JSON.stringify({ orderId, response: terminalResponse }))
+
+      // Terminal's response format has changed across API versions. Treat a
+      // successful HTTP response with shipment data as success even when the
+      // response does not include the older boolean `status` field.
+      const terminalSucceeded = pickupRes.ok && !!(pickupData?.data?.shipment_id || pickupData?.data?.id || pickupData?.shipment_id || pickupData?.id)
+      if (!terminalSucceeded) {
+        const message = pickupData.message || pickupData.error || pickupData.errors?.[0]?.message || `Terminal rejected the booking (HTTP ${pickupRes.status}).`
+        const debugSummary = JSON.stringify({
+          httpStatus: pickupRes.status,
+          httpOk: pickupRes.ok,
+          response: pickupData,
+        })
+        console.error('Terminal pickup booking failed — COMPLETE RESPONSE:', debugSummary)
         await supabase
           .from('orders')
           .update({
             courier_booking_status: 'failed',
             courier_booking_error: message,
+            courier_booking_debug: terminalResponse,
           })
           .eq('id', orderId)
           .is('courier_shipment_id', null)
-        return jsonResponse({ error: message }, 502)
+        return jsonResponse({
+          error: message,
+          bookingFailed: true,
+          terminalHttpStatus: pickupRes.status,
+        }, 502)
       }
 
       const shipment = pickupData.data || {}
@@ -163,7 +193,7 @@ Deno.serve(async (req) => {
         const message = 'Terminal confirmed the booking but did not return a shipment ID.'
         await supabase
           .from('orders')
-          .update({ courier_booking_status: 'failed', courier_booking_error: message })
+          .update({ courier_booking_status: 'failed', courier_booking_error: message, courier_booking_debug: terminalResponse })
           .eq('id', orderId)
         return jsonResponse({ error: message }, 502)
       }
@@ -216,6 +246,11 @@ Deno.serve(async (req) => {
         .update({
           courier_booking_status: 'failed',
           courier_booking_error: message,
+          courier_booking_debug: {
+            httpStatus: null,
+            httpOk: false,
+            error: message,
+          },
         })
         .eq('id', orderId)
         .is('courier_shipment_id', null)

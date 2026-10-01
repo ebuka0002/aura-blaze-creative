@@ -195,6 +195,7 @@ Deno.serve(async (req) => {
     // can be retried safely without charging the customer again.
     return jsonResponse({
       success: paid,
+      orderId: order.id,
       orderNumber: order.order_number,
       status: paid ? 'paid' : order.status,
       items,

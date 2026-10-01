@@ -25,3 +25,12 @@ Flow:
 
 A failed courier booking does not make an already-successful payment fail; it is
 logged so it can be retried or handled manually.
+
+
+## Terminal booking diagnostics
+The `shipping-book-pickup` function logs the exact booking request (without the
+secret key) and the complete Terminal HTTP response body/status to Supabase Edge
+Function logs. Failed responses are also saved in `orders.courier_booking_debug`
+so the reason a paid shipment stayed Draft can be inspected without charging
+the customer again. The debug payload contains Terminal response data and should
+be treated as operational/private order data.
