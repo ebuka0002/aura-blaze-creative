@@ -203,8 +203,8 @@ export default function OrderConfirmation() {
           },
         }))
       } catch (err) {
-        console.error('Terminal booking retry failed:', err)
-        setBookingRetryResult({ success: false, message: err.message || 'Terminal could not book the shipment. Please try again.' })
+        console.error('Shipping booking retry failed:', err)
+        setBookingRetryResult({ success: false, message: err.message || 'Red Star could not book the shipment. Please try again.' })
       } finally {
         setBookingRetrying(false)
       }
@@ -230,7 +230,7 @@ export default function OrderConfirmation() {
               Your payment was successful. The courier booking did not complete yet, so you have not been charged again.
             </p>
             {shippingBooking.error && (
-              <p className="text-xs text-grey mb-4">Terminal response: {shippingBooking.error}</p>
+              <p className="text-xs text-grey mb-4">Courier response: {shippingBooking.error}</p>
             )}
             {bookingNeedsRetry && (
               <button

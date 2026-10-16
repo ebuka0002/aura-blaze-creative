@@ -43,10 +43,9 @@ export default function Checkout() {
   const [loginError, setLoginError] = useState('')
   const [loggingIn, setLoggingIn] = useState(false)
 
-  // Real shipping rates, fetched live from Terminal Africa once the
+  // Real shipping rates, fetched live from Red Star Express once the
   // address is filled in — replaces the old hardcoded flat-rate list.
   const [shippingRates, setShippingRates] = useState([])
-  const [shippingShipmentId, setShippingShipmentId] = useState(null)
   const [selectedRateId, setSelectedRateId] = useState(null)
   const [ratesLoading, setRatesLoading] = useState(false)
   const [ratesError, setRatesError] = useState(null)
@@ -76,7 +75,6 @@ export default function Checkout() {
     const state = e.target.value
     setForm((prev) => ({ ...prev, state, city: '', postalCode: '' }))
     setShippingRates([])
-    setShippingShipmentId(null)
     setSelectedRateId(null)
     setRatesError(null)
   }
@@ -139,7 +137,7 @@ postalCode: prev.postalCode || addr.postalCode || '',
     setSelectedRateId(null)
 
     try {
-      const { shipmentId, rates } = await fetchShippingRates({
+      const { rates } = await fetchShippingRates({
         deliveryAddress: {
   address: form.address,
   line2: form.line2,
@@ -161,7 +159,6 @@ postalCode: prev.postalCode || addr.postalCode || '',
         return
       }
 
-      setShippingShipmentId(shipmentId)
       setShippingRates(rates)
       // Pre-select the cheapest option as a sensible default — the
       // customer can still change it before paying.
@@ -257,7 +254,6 @@ postalCode: prev.postalCode || addr.postalCode || '',
         shippingCost,
         shippingMethod: `${selectedRate.carrierName} (${selectedRate.deliveryTime || selectedRate.deliveryEta || 'estimated delivery varies'})`,
         shippingRateId: selectedRate.rateId,
-        shippingShipmentId,
         customerName: `${form.firstName} ${form.lastName}`.trim(),
         customerEmail: form.email,
         customerPhone: form.phone,

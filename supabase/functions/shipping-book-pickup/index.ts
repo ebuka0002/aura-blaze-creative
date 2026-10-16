@@ -1,15 +1,29 @@
 // Supabase Edge Function: shipping-book-pickup
 //
-// Books the real Terminal Africa shipment only after Paystack has confirmed
-// payment. The function claims the order atomically before calling Terminal,
-// so repeated verify-payment requests cannot double-book the same order.
+// Submits the Red Star Express (RedSpeed API) pickup request only after
+// Paystack has confirmed payment. The function claims the order atomically
+// before calling Red Star, so repeated verify-payment requests cannot
+// double-book the same order.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.49.4'
+import {
+  CATEGORY_WEIGHTS_KG,
+  DEFAULT_WEIGHT_KG,
+  PICKUP_ADDRESS,
+  REDSTAR_CARRIER_NAME,
+  estimateParcelWeight,
+  extractWaybill,
+  isRedstarConfigured,
+  redstarErrorMessage,
+  redstarFetch,
+  resolvePaymentType,
+  resolvePickupType,
+  resolveRoute,
+} from '../_shared/redstar.ts'
 
-const TERMINAL_SECRET_KEY = Deno.env.get('TERMINAL_SECRET_KEY')
-const TERMINAL_API_BASE_URL = Deno.env.get('TERMINAL_API_BASE_URL') || 'https://api.terminal.africa/v1'
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+const REDSTAR_DELIVERY_TYPE = Deno.env.get('REDSTAR_DELIVERY_TYPE')
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -24,20 +38,11 @@ function jsonResponse(body: unknown, status = 200) {
   })
 }
 
-async function readJson(response: Response) {
-  const text = await response.text()
-  try {
-    return JSON.parse(text)
-  } catch {
-    return { message: text }
-  }
-}
-
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    if (!TERMINAL_SECRET_KEY || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    if (!isRedstarConfigured() || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       return jsonResponse({ error: 'Shipping booking is not fully configured on the server.' }, 500)
     }
 
@@ -48,7 +53,11 @@ Deno.serve(async (req) => {
 
     const { data: currentOrder, error: readError } = await supabase
       .from('orders')
-      .select('id, status, shipping_rate_id, shipping_shipment_id, courier_shipment_id, courier_booking_status, courier_tracking_url, courier_name, courier_booking_error')
+      .select(`
+        id, order_number, status, customer_name, customer_email, customer_phone, shipping_address,
+        shipping_rate_id, courier_shipment_id, courier_booking_status,
+        courier_tracking_url, courier_tracking_number, courier_name
+      `)
       .eq('id', orderId)
       .single()
 
@@ -61,24 +70,20 @@ Deno.serve(async (req) => {
         success: true,
         alreadyBooked: true,
         shipmentId: currentOrder.courier_shipment_id,
+        trackingNumber: currentOrder.courier_tracking_number,
         trackingUrl: currentOrder.courier_tracking_url,
         courierName: currentOrder.courier_name,
       })
     }
-    if (!currentOrder.shipping_rate_id || !currentOrder.shipping_shipment_id) {
-      return jsonResponse({
-        error: 'Order is paid but is missing the Terminal rate or draft shipment ID.',
-      }, 409)
+    if (!currentOrder.shipping_rate_id) {
+      return jsonResponse({ error: 'Order is paid but has no selected shipping method.' }, 409)
     }
 
     // Claim this order before calling the external API. Only one concurrent
     // request can change pending/failed -> booking.
     const { data: claimRows, error: claimError } = await supabase
       .from('orders')
-      .update({
-        courier_booking_status: 'booking',
-        courier_booking_error: null,
-      })
+      .update({ courier_booking_status: 'booking', courier_booking_error: null })
       .eq('id', orderId)
       .eq('status', 'paid')
       .is('courier_shipment_id', null)
@@ -93,7 +98,7 @@ Deno.serve(async (req) => {
     if (!claimRows?.length) {
       const { data: latest } = await supabase
         .from('orders')
-        .select('courier_shipment_id, courier_booking_status, courier_tracking_url, courier_name')
+        .select('courier_shipment_id, courier_booking_status, courier_tracking_url, courier_tracking_number, courier_name')
         .eq('id', orderId)
         .single()
 
@@ -102,6 +107,7 @@ Deno.serve(async (req) => {
           success: true,
           alreadyBooked: true,
           shipmentId: latest.courier_shipment_id,
+          trackingNumber: latest.courier_tracking_number,
           trackingUrl: latest.courier_tracking_url,
           courierName: latest.courier_name,
         })
@@ -116,144 +122,164 @@ Deno.serve(async (req) => {
       }, 409)
     }
 
-    try {
-      const bookingRequest = {
-        rate_id: currentOrder.shipping_rate_id,
-        shipment_id: currentOrder.shipping_shipment_id,
-        purchase_insurance: false,
-      }
+    const markFailed = async (message: string, debug: unknown) => {
+      await supabase
+        .from('orders')
+        .update({
+          courier_booking_status: 'failed',
+          courier_booking_error: message,
+          courier_booking_debug: debug,
+        })
+        .eq('id', orderId)
+        .is('courier_shipment_id', null)
+    }
 
-      console.log('Terminal pickup booking request:', JSON.stringify({
-        orderId,
-        endpoint: `${TERMINAL_API_BASE_URL}/shipments/pickup`,
-        body: bookingRequest,
+    try {
+      const address = currentOrder.shipping_address || {}
+
+      // Items + product categories, for weight and the commercial detail lines.
+      const { data: orderItems } = await supabase
+        .from('order_items')
+        .select('product_id, product_name, quantity, unit_price')
+        .eq('order_id', orderId)
+      const productIds = [...new Set((orderItems || []).map((i: any) => i.product_id).filter(Boolean))]
+      const { data: products } = productIds.length
+        ? await supabase.from('products').select('id, category').in('id', productIds)
+        : { data: [] }
+      const categoryById = Object.fromEntries((products || []).map((p: any) => [p.id, p.category]))
+
+      const weightItems = (orderItems || []).map((i: any) => ({
+        category: categoryById[i.product_id],
+        quantity: i.quantity,
+      }))
+      const weight = estimateParcelWeight(weightItems)
+      const pieces = Math.max(1, (orderItems || []).reduce((n: number, i: any) => n + Number(i.quantity || 1), 0))
+
+      const route = await resolveRoute({ city: address.city, state: address.state, line2: address.line2 })
+      const pickupType = await resolvePickupType()
+      const paymentType = await resolvePaymentType()
+
+      const shipmentItems = (orderItems || []).map((i: any) => ({
+        id: 0,
+        status: 0,
+        shipmentId: 0,
+        commodity: i.product_name || 'Clothing',
+        description: i.product_name || 'Clothing item',
+        countryOfManufacturing: 'Nigeria',
+        quantity: Number(i.quantity || 1),
+        weight: CATEGORY_WEIGHTS_KG[categoryById[i.product_id]] ?? DEFAULT_WEIGHT_KG,
+        unitOfMeasure: 1,
+        unitOfPrice: Number(i.unit_price || 0) / 100, // stored in kobo
       }))
 
-      const pickupRes = await fetch(`${TERMINAL_API_BASE_URL}/shipments/pickup`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${TERMINAL_SECRET_KEY}`,
-          'Content-Type': 'application/json',
-          Accept: 'application/json',
-        },
-        body: JSON.stringify(bookingRequest),
+      const buildRequest = (senderCity: string, recipientCity: string) => ({
+        senderCity,
+        recipientCity,
+        recipientTownID: route.recipientTown?.id ?? null,
+        senderTownID: null,
+        recipientName: currentOrder.customer_name,
+        recipientPhoneNo: currentOrder.customer_phone,
+        recipientEmail: currentOrder.customer_email,
+        recipientAddress: [address.address, address.line2].filter(Boolean).join(', '),
+        recipientState: address.state,
+        senderName: PICKUP_ADDRESS.name,
+        senderAddress: PICKUP_ADDRESS.address,
+        senderPhone: PICKUP_ADDRESS.phone,
+        orderNo: currentOrder.order_number,
+        description: 'Aura Blaze Creative clothing order',
+        onforwardingLocation: route.recipientTown?.name ?? null,
+        paymentType,
+        pickupType,
+        weight,
+        pieces,
+        cashOnDelivery: 0,
+        ...(REDSTAR_DELIVERY_TYPE ? { deliveryType: REDSTAR_DELIVERY_TYPE } : {}),
+        shipmentItems,
       })
 
-      const pickupData = await readJson(pickupRes)
-      const terminalResponse = {
-        httpStatus: pickupRes.status,
-        httpOk: pickupRes.ok,
-        body: pickupData,
-      }
-      console.log('Terminal pickup booking response:', JSON.stringify({ orderId, response: terminalResponse }))
+      // Red Star's spec doesn't say whether city fields take the code (abbr)
+      // or the name, so try the code first and fall back to the name.
+      const attempts = [
+        buildRequest(route.senderCity.abbr, route.recipientCity.abbr),
+        buildRequest(route.senderCity.name, route.recipientCity.name),
+      ]
 
-      // Terminal's response format has changed across API versions. Treat a
-      // successful HTTP response with shipment data as success even when the
-      // response does not include the older boolean `status` field.
-      const terminalSucceeded = pickupRes.ok && !!(pickupData?.data?.shipment_id || pickupData?.data?.id || pickupData?.shipment_id || pickupData?.id)
-      if (!terminalSucceeded) {
-        const message = pickupData.message || pickupData.error || pickupData.errors?.[0]?.message || `Terminal rejected the booking (HTTP ${pickupRes.status}).`
-        const debugSummary = JSON.stringify({
-          httpStatus: pickupRes.status,
-          httpOk: pickupRes.ok,
-          response: pickupData,
-        })
-        console.error('Terminal pickup booking failed — COMPLETE RESPONSE:', debugSummary)
-        await supabase
-          .from('orders')
-          .update({
-            courier_booking_status: 'failed',
-            courier_booking_error: message,
-            courier_booking_debug: terminalResponse,
-          })
-          .eq('id', orderId)
-          .is('courier_shipment_id', null)
-        return jsonResponse({
-          error: message,
-          bookingFailed: true,
-          terminalHttpStatus: pickupRes.status,
-        }, 502)
+      let lastRes: { ok: boolean; status: number; data: any } | null = null
+      let waybill: string | null = null
+
+      for (const body of attempts) {
+        console.log('Red Star PickupRequest:', JSON.stringify({ orderId, body }))
+        const res = await redstarFetch('/api/Operations/PickupRequest', { method: 'POST', body })
+        console.log('Red Star PickupRequest response:', JSON.stringify({ orderId, status: res.status, response: res.data }))
+        lastRes = res
+        if (res.ok) {
+          waybill = extractWaybill(res.data)
+          break
+        }
+        if (res.status === 401 || res.status === 403) break
       }
 
-      const shipment = pickupData.data || {}
-      const resolvedShipmentId = shipment.shipment_id || shipment.id || null
-      const trackingUrl = shipment.extras?.tracking_url || shipment.tracking_url || null
-      const trackingNumber = shipment.extras?.tracking_number || shipment.tracking_number || null
-      const courierName =
-        (typeof shipment.carrier === 'object' ? shipment.carrier?.name : null) ||
-        shipment.carrier_name ||
-        null
-      const labelUrl =
-        shipment.extras?.label_url ||
-        shipment.extras?.label ||
-        shipment.label_url ||
-        null
+      const debug = { httpStatus: lastRes?.status ?? null, httpOk: lastRes?.ok ?? false, body: lastRes?.data ?? null }
 
-      if (!resolvedShipmentId) {
-        const message = 'Terminal confirmed the booking but did not return a shipment ID.'
+      if (!lastRes?.ok) {
+        const message = redstarErrorMessage(lastRes?.data, `Red Star rejected the booking (HTTP ${lastRes?.status}).`)
+        console.error('Red Star booking failed:', JSON.stringify(debug))
+        await markFailed(message, debug)
+        return jsonResponse({ error: message, bookingFailed: true, redstarHttpStatus: lastRes?.status }, 502)
+      }
+
+      if (!waybill) {
+        // Red Star accepted the request but we cannot see a waybill number in
+        // the response. Do NOT mark it failed — a retry would create a second
+        // pickup request. Flag it clearly for manual follow-up instead.
+        const message = 'Red Star accepted the pickup request but no waybill number was found in its response. Check the Red Star dashboard before retrying.'
+        console.error(message, JSON.stringify(debug))
         await supabase
           .from('orders')
-          .update({ courier_booking_status: 'failed', courier_booking_error: message, courier_booking_debug: terminalResponse })
+          .update({ courier_booking_status: 'failed', courier_booking_error: message, courier_booking_debug: debug })
           .eq('id', orderId)
-        return jsonResponse({ error: message }, 502)
+        return jsonResponse({ error: message, bookingFailed: true, possiblyBooked: true }, 502)
       }
 
       const { error: saveError } = await supabase
         .from('orders')
         .update({
-          courier_shipment_id: resolvedShipmentId,
-          courier_tracking_url: trackingUrl,
-          courier_tracking_number: trackingNumber,
-          courier_name: courierName,
-          courier_label_url: labelUrl,
+          courier_shipment_id: waybill,
+          courier_tracking_number: waybill,
+          courier_tracking_url: null,
+          courier_name: REDSTAR_CARRIER_NAME,
+          courier_label_url: null,
           courier_booking_status: 'booked',
           courier_booking_error: null,
+          courier_booking_debug: debug,
           courier_booked_at: new Date().toISOString(),
         })
         .eq('id', orderId)
         .is('courier_shipment_id', null)
 
       if (saveError) {
-        console.error('Terminal booking succeeded but saving shipment failed:', saveError)
+        console.error('Red Star booking succeeded but saving shipment failed:', saveError)
         return jsonResponse({
           success: true,
-          warning: 'Shipment was booked at Terminal, but the local order record could not be updated.',
-          shipmentId: resolvedShipmentId,
-          trackingUrl,
+          warning: 'Shipment was booked at Red Star, but the local order record could not be updated.',
+          shipmentId: waybill,
+          trackingNumber: waybill,
         }, 200)
       }
 
-      console.log('Terminal shipment booked:', JSON.stringify({
-        orderId,
-        shipmentId: resolvedShipmentId,
-        trackingNumber,
-        trackingUrl,
-        courierName,
-      }))
+      console.log('Red Star shipment booked:', JSON.stringify({ orderId, waybill }))
 
       return jsonResponse({
         success: true,
-        shipmentId: resolvedShipmentId,
-        trackingNumber,
-        trackingUrl,
-        courierName,
-        labelUrl,
+        shipmentId: waybill,
+        trackingNumber: waybill,
+        trackingUrl: null,
+        courierName: REDSTAR_CARRIER_NAME,
+        labelUrl: null,
       })
     } catch (bookingError) {
-      const message = bookingError instanceof Error ? bookingError.message : 'Unexpected Terminal booking error.'
-      await supabase
-        .from('orders')
-        .update({
-          courier_booking_status: 'failed',
-          courier_booking_error: message,
-          courier_booking_debug: {
-            httpStatus: null,
-            httpOk: false,
-            error: message,
-          },
-        })
-        .eq('id', orderId)
-        .is('courier_shipment_id', null)
+      const message = bookingError instanceof Error ? bookingError.message : 'Unexpected Red Star booking error.'
+      await markFailed(message, { httpStatus: null, httpOk: false, error: message })
       throw bookingError
     }
   } catch (err) {

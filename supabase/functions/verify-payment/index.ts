@@ -1,8 +1,8 @@
 // Supabase Edge Function: verify-payment
 //
 // Verifies the Paystack transaction server-to-server, confirms the order is
-// paid, and then ensures a Terminal Africa shipment is booked. Shipment
-// booking is independently idempotent/retryable: a temporary Terminal error
+// paid, and then ensures a Red Star Express shipment is booked. Shipment
+// booking is independently idempotent/retryable: a temporary Red Star error
 // does not leave a paid order permanently unshippable.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.49.4'
@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
       .select(`
         id, order_number, total, subtotal, shipping_cost, currency, status,
         customer_name, customer_email, shipping_address,
-        shipping_rate_id, shipping_shipment_id,
+        shipping_rate_id,
         courier_shipment_id, courier_tracking_number, courier_tracking_url,
         courier_name, courier_label_url, courier_booking_status
       `)
@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
       }
     }
 
-    // IMPORTANT: Do not gate this on isFirstConfirmation. If Terminal is
+    // IMPORTANT: Do not gate this on isFirstConfirmation. If Red Star is
     // temporarily unavailable on the first verification, a later verification
     // must be able to retry the booking. shipping-book-pickup itself provides
     // the atomic claim that prevents duplicate external bookings.
@@ -161,7 +161,7 @@ Deno.serve(async (req) => {
       labelUrl: order.courier_label_url,
     }
 
-    if (paid && !order.courier_shipment_id && order.shipping_rate_id && order.shipping_shipment_id) {
+    if (paid && !order.courier_shipment_id && order.shipping_rate_id) {
       shippingBooking.attempted = true
       try {
         const pickupRes = await fetch(`${SUPABASE_URL}/functions/v1/shipping-book-pickup`, {

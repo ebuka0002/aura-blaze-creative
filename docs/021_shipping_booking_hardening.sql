@@ -1,4 +1,4 @@
--- AURA BLAZE CREATIVE — Hardened Paystack -> Terminal Africa shipping flow
+-- AURA BLAZE CREATIVE — Hardened Paystack -> courier (Red Star Express) shipping flow
 -- Run this in Supabase SQL Editor before deploying the updated Edge Functions.
 
 alter table orders add column if not exists courier_tracking_number text;

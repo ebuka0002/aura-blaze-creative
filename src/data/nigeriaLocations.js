@@ -1,6 +1,6 @@
 // Nigerian states and commonly used delivery cities/areas.
 // For FCT/Abuja, local districts such as Kubwa are preserved in the UI,
-// while the Terminal API receives Abuja as the service city.
+// while the courier API receives Abuja as the service city.
 export const NIGERIA_LOCATIONS = [
   { state: 'Abia', cities: ['Aba', 'Umuahia'] },
   { state: 'Adamawa', cities: ['Yola', 'Mubi', 'Jimeta'] },
