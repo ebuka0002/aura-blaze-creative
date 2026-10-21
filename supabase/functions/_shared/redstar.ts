@@ -157,6 +157,7 @@ export function matchTown(towns: Town[], ...names: Array<string | undefined>): T
 
 export type ResolvedRoute = {
   senderCity: City
+  senderTown: Town | null
   recipientCity: City
   recipientTown: Town | null
 }
@@ -175,7 +176,16 @@ export async function resolveRoute(dest: { city?: string; state?: string; line2?
 
   const towns = await getTowns(recipientCity)
   const recipientTown = towns.length ? matchTown(towns, dest.city, dest.line2) : null
-  return { senderCity, recipientCity, recipientTown }
+
+  // A pickup from our address needs a sender town too; a missing one is a
+  // likely cause of Red Star's server-side null-reference error.
+  const senderTowns = await getTowns(senderCity)
+  const senderTown = senderTowns.length
+    ? matchTown(senderTowns, PICKUP_ADDRESS.city, PICKUP_ADDRESS.address) || senderTowns[0]
+    : null
+  console.log('Red Star sender towns:', JSON.stringify({ chosen: senderTown, available: senderTowns.map((t) => t.name) }))
+
+  return { senderCity, senderTown, recipientCity, recipientTown }
 }
 
 // ---------- Pickup / payment types ----------
@@ -261,12 +271,15 @@ export function extractFee(data: any, depth = 0): number | null {
   return null
 }
 
+// Red Star answers failures with HTTP 200 and placeholder values like "N/A".
+const isPlaceholder = (v: unknown) => /^(n\/?a|null|none|-+|0)?$/i.test(String(v ?? '').trim())
+
 export function extractWaybill(data: any, depth = 0): string | null {
   if (data == null || depth > 3) return null
   if (depth === 0) data = lowerKeys(data)
   if (typeof data === 'string') {
     const m = data.match(/\b(?=[A-Z0-9-]*\d)[A-Z0-9-]{6,}\b/i)
-    return m ? m[0] : null
+    return m && !isPlaceholder(m[0]) ? m[0] : null
   }
   if (typeof data === 'number') return String(data)
   if (Array.isArray(data)) {
@@ -278,7 +291,7 @@ export function extractWaybill(data: any, depth = 0): string | null {
   }
   if (typeof data === 'object') {
     for (const key of ['waybillnumber', 'waybillno', 'waybill', 'trackingnumber', 'trackingno']) {
-      if (data[key]) return String(data[key])
+      if (data[key] && !isPlaceholder(data[key])) return String(data[key])
     }
     for (const key of ['data', 'result', 'response', 'shipment', 'message']) {
       if (key in data) {
@@ -288,6 +301,34 @@ export function extractWaybill(data: any, depth = 0): string | null {
     }
   }
   return null
+}
+
+// Red Star's PickupRequest replies HTTP 200 even when it fails, e.g.
+//   { TransStatus: "Unsuccessful", TransStatusDetails: "Object reference not
+//     set to an instance of an object.", WaybillNumber: "N/A", ... }
+// Only a reply with a real waybill and a non-failure TransStatus is a success.
+export function pickupOutcome(data: any): { ok: boolean; waybill: string | null; message: string | null } {
+  const d = data && typeof data === 'object' && !Array.isArray(data) ? lowerKeys(data) : null
+  const status = d ? String(d.transstatus ?? '') : ''
+  const details = d ? String(d.transstatusdetails ?? '').trim() : ''
+  const waybill = extractWaybill(data)
+  const failedStatus = /un-?success|fail|error|reject/i.test(status)
+  if (failedStatus || !waybill) {
+    return {
+      ok: false,
+      waybill: null,
+      message: `Red Star did not create the shipment${status ? ` (${status})` : ''}${details ? `: ${details}` : '.'}`,
+    }
+  }
+  return { ok: true, waybill, message: null }
+}
+
+// Red Star phone fields: send the local Nigerian format without spaces
+// (+234 904 532 0048 -> 09045320048).
+export function normalizePhone(v: unknown): string {
+  const digits = String(v ?? '').replace(/[^\d+]/g, '')
+  if (/^\+?234\d{10}$/.test(digits)) return '0' + digits.replace(/^\+?234/, '')
+  return digits.replace(/^\+/, '')
 }
 
 // Estimated parcel weight by product category (kg).

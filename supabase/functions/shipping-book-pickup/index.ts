@@ -12,7 +12,8 @@ import {
   PICKUP_ADDRESS,
   REDSTAR_CARRIER_NAME,
   estimateParcelWeight,
-  extractWaybill,
+  normalizePhone,
+  pickupOutcome,
   isRedstarConfigured,
   redstarErrorMessage,
   redstarFetch,
@@ -176,36 +177,42 @@ Deno.serve(async (req) => {
         senderCity,
         recipientCity,
         recipientTownID: route.recipientTown?.id ?? null,
-        senderTownID: null,
-        recipientName: currentOrder.customer_name,
-        recipientPhoneNo: currentOrder.customer_phone,
+        senderTownID: route.senderTown?.id ?? null,
+        recipientName: String(currentOrder.customer_name || '').replace(/\s+/g, ' ').trim(),
+        recipientPhoneNo: normalizePhone(currentOrder.customer_phone),
         recipientEmail: currentOrder.customer_email,
-        recipientAddress: [address.address, address.line2].filter(Boolean).join(', '),
+        recipientAddress: [address.address, address.line2].map((x) => String(x || '').trim()).filter(Boolean).join(', '),
         recipientState: address.state,
         senderName: PICKUP_ADDRESS.name,
         senderAddress: PICKUP_ADDRESS.address,
-        senderPhone: PICKUP_ADDRESS.phone,
+        senderPhone: normalizePhone(PICKUP_ADDRESS.phone),
         orderNo: currentOrder.order_number,
         description: 'Aura Blaze Creative clothing order',
+        // Empty strings rather than nulls: a null here is a likely trigger of
+        // Red Star's "Object reference not set" crash.
+        packaging: Deno.env.get('REDSTAR_PACKAGING') || '',
+        boxandCrating: '',
         onforwardingLocation: route.recipientTown?.name ?? null,
         paymentType,
         pickupType,
         weight,
         pieces,
         cashOnDelivery: 0,
-        ...(REDSTAR_DELIVERY_TYPE ? { deliveryType: REDSTAR_DELIVERY_TYPE } : {}),
+        deliveryType: REDSTAR_DELIVERY_TYPE || '',
         shipmentItems,
       })
 
-      // Red Star's spec doesn't say whether city fields take the code (abbr)
-      // or the name, so try the code first and fall back to the name.
+      // Confirmed from live logs: PickupRequest wants the city NAME for the
+      // recipient (e.g. "ABAKALIKI"); the city code ("AKK") makes Red Star crash
+      // with "Object reference not set". Names first, codes only as a fallback.
       const attempts = [
-        buildRequest(route.senderCity.abbr, route.recipientCity.abbr),
         buildRequest(route.senderCity.name, route.recipientCity.name),
+        buildRequest(route.senderCity.abbr, route.recipientCity.abbr),
       ]
 
       let lastRes: { ok: boolean; status: number; data: any } | null = null
       let waybill: string | null = null
+      let failureMessage: string | null = null
 
       for (const body of attempts) {
         console.log('Red Star PickupRequest:', JSON.stringify({ orderId, body }))
@@ -213,32 +220,28 @@ Deno.serve(async (req) => {
         console.log('Red Star PickupRequest response:', JSON.stringify({ orderId, status: res.status, response: res.data }))
         lastRes = res
         if (res.ok) {
-          waybill = extractWaybill(res.data)
-          break
+          // HTTP 200 does NOT mean success with Red Star: check TransStatus
+          // and that a real waybill came back.
+          const outcome = pickupOutcome(res.data)
+          if (outcome.ok) {
+            waybill = outcome.waybill
+            failureMessage = null
+            break
+          }
+          failureMessage = outcome.message
+          continue // nothing was created, so trying the next variant is safe
         }
+        failureMessage = redstarErrorMessage(res.data, `Red Star rejected the booking (HTTP ${res.status}).`)
         if (res.status === 401 || res.status === 403) break
       }
 
       const debug = { httpStatus: lastRes?.status ?? null, httpOk: lastRes?.ok ?? false, body: lastRes?.data ?? null }
 
-      if (!lastRes?.ok) {
-        const message = redstarErrorMessage(lastRes?.data, `Red Star rejected the booking (HTTP ${lastRes?.status}).`)
+      if (!waybill) {
+        const message = failureMessage || 'Red Star did not return a waybill number.'
         console.error('Red Star booking failed:', JSON.stringify(debug))
         await markFailed(message, debug)
         return jsonResponse({ error: message, bookingFailed: true, redstarHttpStatus: lastRes?.status }, 502)
-      }
-
-      if (!waybill) {
-        // Red Star accepted the request but we cannot see a waybill number in
-        // the response. Do NOT mark it failed — a retry would create a second
-        // pickup request. Flag it clearly for manual follow-up instead.
-        const message = 'Red Star accepted the pickup request but no waybill number was found in its response. Check the Red Star dashboard before retrying.'
-        console.error(message, JSON.stringify(debug))
-        await supabase
-          .from('orders')
-          .update({ courier_booking_status: 'failed', courier_booking_error: message, courier_booking_debug: debug })
-          .eq('id', orderId)
-        return jsonResponse({ error: message, bookingFailed: true, possiblyBooked: true }, 502)
       }
 
       const { error: saveError } = await supabase

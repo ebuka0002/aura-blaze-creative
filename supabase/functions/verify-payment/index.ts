@@ -12,6 +12,8 @@ const PAYSTACK_SECRET_KEY = Deno.env.get('PAYSTACK_SECRET_KEY')
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY')
+// Where new-order alerts go (comma-separated allowed). Set ADMIN_ORDER_EMAIL in Supabase secrets.
+const ADMIN_ORDER_EMAIL = Deno.env.get('ADMIN_ORDER_EMAIL') || 'info@aurablazecreative.com'
 const ORDER_EMAIL_FROM = Deno.env.get('ORDER_EMAIL_FROM') || 'Aura Blaze Creative <orders@aurablazecreative.com>'
 
 const corsHeaders = {
@@ -187,6 +189,45 @@ Deno.serve(async (req) => {
       } catch (pickupErr) {
         console.error('Failed to invoke shipping-book-pickup:', pickupErr)
         shippingBooking.error = pickupErr instanceof Error ? pickupErr.message : 'Shipment booking failed.'
+      }
+    }
+
+    // Tell the store owner about the new order. Sent once, on the first
+    // confirmation, after the shipping attempt so it can say how that went.
+    if (isFirstConfirmation && RESEND_API_KEY && ADMIN_ORDER_EMAIL) {
+      try {
+        const esc = (v: unknown) =>
+          String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        const money = (minor: number) =>
+          new Intl.NumberFormat('en-NG', { style: 'currency', currency: order.currency, maximumFractionDigits: 0 }).format(minor / 100)
+        const addr = order.shipping_address || {}
+        const lines = rawOrderItems
+          .map((i) => `<li>${esc(i.product_name)} — ${esc(i.color_name || '')} ${esc(i.size || '')} × ${esc(i.quantity)}</li>`)
+          .join('')
+        const shipLine = shippingBooking.success
+          ? `Booked with ${esc(shippingBooking.courierName || 'courier')}${shippingBooking.trackingNumber ? ` — waybill ${esc(shippingBooking.trackingNumber)}` : ''}`
+          : `<strong>NOT booked yet</strong>${shippingBooking.error ? ` — ${esc(shippingBooking.error)}` : ''}. Open the order confirmation page for this reference to retry, or book it manually.`
+        const adminHtml = `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5">
+          <h2>New paid order #${esc(order.order_number)}</h2>
+          <p><strong>Total:</strong> ${money(order.total)} (shipping ${money(order.shipping_cost)})</p>
+          <p><strong>Customer:</strong> ${esc(order.customer_name)} — ${esc(order.customer_email)}</p>
+          <p><strong>Deliver to:</strong> ${esc([addr.address, addr.line2, addr.city, addr.state, addr.country].filter(Boolean).join(', '))}</p>
+          <p><strong>Items:</strong></p><ul>${lines}</ul>
+          <p><strong>Shipping:</strong> ${shipLine}</p>
+        </div>`
+        const adminRes = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            from: ORDER_EMAIL_FROM,
+            to: ADMIN_ORDER_EMAIL.split(',').map((e) => e.trim()).filter(Boolean),
+            subject: `New order #${order.order_number} — ${money(order.total)}`,
+            html: adminHtml,
+          }),
+        })
+        if (!adminRes.ok) console.error('Owner order alert failed:', adminRes.status, await adminRes.text())
+      } catch (adminErr) {
+        console.error('Failed to send owner order alert:', adminErr)
       }
     }
 

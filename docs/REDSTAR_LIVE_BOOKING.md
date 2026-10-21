@@ -26,6 +26,7 @@ Optional overrides (only if your account needs something different):
 | `REDSTAR_PICKUP_TYPE` | Numeric pickup type id, e.g. `2` to have parcels dropped at a Red Star location instead. |
 | `REDSTAR_PAYMENT_TYPE` | Exact payment type name. Default `Prepaid`. |
 | `REDSTAR_DELIVERY_TYPE` | Value for the `deliveryType` field, if Red Star requires one. |
+| `REDSTAR_PACKAGING` | Value for the `packaging` field if Red Star requires one. Default empty. |
 | `REDSTAR_API_BASE_URL` | Override the API host. Default tries `https://` then `http://redspeedopenapi.redstarplc.com`. |
 
 Keys are generated at https://redspeed.redstarplc.com/dashboard/user-api-keys.
@@ -82,3 +83,49 @@ the order is marked failed with a message to check the Red Star dashboard
 Waybill printing (`PrintWaybill`), shipment cancellation (`CancelShipment`) and
 live tracking (`TrackShipment`) are available in the API but not wired into
 the admin yet.
+
+## Troubleshooting: "Object reference not set to an instance of an object"
+
+Red Star answers failed pickup requests with **HTTP 200** and a body like
+`{"TransStatus":"Unsuccessful","TransStatusDetails":"Object reference not set...","WaybillNumber":"N/A"}`.
+That message is a crash inside Red Star's server. In live testing the cause
+was sending the recipient city *code* (`AKK`); `PickupRequest` needs the city
+*name* (`ABAKALIKI`). The site now sends names first. The site now treats `TransStatus: Unsuccessful` / a `N/A` waybill as a
+failure, stores the message on the order and keeps the order retryable.
+
+If it keeps happening, ask Red Star which values are valid for `deliveryType`
+and `packaging`, then set them:
+
+```bash
+supabase secrets set REDSTAR_DELIVERY_TYPE="<value from Red Star>" REDSTAR_PACKAGING="<value from Red Star>"
+```
+
+### Reset orders that were wrongly saved as "booked" with waybill N/A
+(Earlier versions recorded these as booked. Run in Supabase SQL Editor.)
+
+```sql
+update orders
+set courier_shipment_id = null,
+    courier_tracking_number = null,
+    courier_booking_status = 'failed',
+    courier_booking_error = 'Earlier booking attempt did not create a Red Star shipment.',
+    courier_booked_at = null
+where courier_shipment_id = 'N/A' or courier_tracking_number = 'N/A';
+```
+
+Then open `https://<your-site>/order-confirmation?reference=<paystack_reference>`
+for each order to retry the booking.
+
+## Cancelling a shipment from the admin
+
+Admin -> Orders -> open an order -> **Courier** card -> **Cancel Red Star shipment**
+(shown only for orders with a real waybill that are `booked`).
+
+One-time setup:
+1. Run `docs/022_courier_cancelled_status.sql` in the Supabase SQL Editor.
+2. `supabase functions deploy shipping-cancel` (it checks the signed-in user's `is_admin` flag on the server).
+
+The button only cancels the Red Star shipment. It does **not** refund the
+customer (do that in Paystack), does **not** change the order status, and
+whether the fee returns to the RedSpeed wallet is Red Star's decision. Always
+confirm in the RedSpeed dashboard that the shipment shows as cancelled.

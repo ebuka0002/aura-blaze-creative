@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useParams, Link, Navigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { fetchAllOrdersAdmin, fetchOrderItemsAdmin, updateOrderStatus } from '../../lib/adminOrders'
+import { cancelCourierShipment } from '../../lib/shipping'
 
 function formatMoney(minorUnits, currency) {
   const amount = minorUnits / 100
@@ -21,6 +22,7 @@ export default function AdminOrderDetail() {
   const [loading, setLoading] = useState(true)
   const [notFound, setNotFound] = useState(false)
   const [updatingStatus, setUpdatingStatus] = useState(false)
+  const [cancellingShipment, setCancellingShipment] = useState(false)
 
   useEffect(() => {
     setLoading(true)
@@ -82,6 +84,34 @@ export default function AdminOrderDetail() {
   }
 }
 
+  const realWaybill =
+    order?.courier_tracking_number && !/^n\/?a$/i.test(order.courier_tracking_number.trim())
+      ? order.courier_tracking_number
+      : null
+
+  const handleCancelShipment = async () => {
+    if (!window.confirm(
+      `Cancel the Red Star shipment ${realWaybill} for order #${order.order_number}?\n\n` +
+      'This does NOT refund the customer (do that in Paystack) and does not change the order status. ' +
+      'Whether the fee returns to your RedSpeed wallet is up to Red Star.'
+    )) return
+
+    setCancellingShipment(true)
+    try {
+      const result = await cancelCourierShipment({ orderId: id })
+      setOrder((prev) => ({ ...prev, courier_booking_status: 'cancelled' }))
+      alert(
+        (result?.warning ? `${result.warning}\n\n` : '') +
+        'Red Star accepted the cancellation. Please confirm it shows as cancelled in the RedSpeed dashboard.'
+      )
+    } catch (err) {
+      console.error('Failed to cancel shipment:', err)
+      alert(`Could not cancel the shipment.\n\n${err.message || 'Please try again.'}`)
+    } finally {
+      setCancellingShipment(false)
+    }
+  }
+
   if (loading) {
     return <div className="p-8"><p className="text-grey text-sm">Loading…</p></div>
   }
@@ -127,6 +157,34 @@ export default function AdminOrderDetail() {
           <p className="text-xs text-grey mt-2">{order.shipping_method}</p>
         </div>
       </div>
+
+      {(order.courier_booking_status || order.courier_tracking_number) && (
+        <div className="bg-white border border-hairline p-5 mb-8">
+          <h2 className="text-xs tracking-[0.1em] uppercase text-grey mb-3">Courier</h2>
+          <p className="text-sm">{order.courier_name || 'Red Star Express'}</p>
+          <p className="text-sm text-grey">
+            Status: <span className="capitalize">{order.courier_booking_status || 'pending'}</span>
+            {realWaybill && <> · Waybill: <span className="font-medium text-void">{realWaybill}</span></>}
+          </p>
+          {order.courier_booking_error && (
+            <p className="text-xs text-blaze mt-2">{order.courier_booking_error}</p>
+          )}
+          {realWaybill && order.courier_booking_status === 'booked' && (
+            <button
+              onClick={handleCancelShipment}
+              disabled={cancellingShipment}
+              className="mt-4 border border-blaze text-blaze px-4 py-2 text-xs tracking-[0.1em] uppercase font-medium hover:bg-blaze hover:text-bone transition-colors disabled:opacity-50"
+            >
+              {cancellingShipment ? 'Cancelling…' : 'Cancel Red Star shipment'}
+            </button>
+          )}
+          {order.courier_booking_status === 'cancelled' && (
+            <p className="text-xs text-grey mt-2">
+              Shipment cancelled. Remember to refund the customer in Paystack if the order is cancelled.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="bg-white border border-hairline p-5">
         <h2 className="text-xs tracking-[0.1em] uppercase text-grey mb-4">Items</h2>

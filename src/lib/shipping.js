@@ -44,3 +44,17 @@ export async function bookCourierPickup({ orderId }) {
   if (data?.error) throw new Error(data.error)
   return data
 }
+
+// Admin only (enforced on the server): cancels the order's Red Star shipment.
+// Does not refund the customer or change the order status.
+export async function cancelCourierShipment({ orderId }) {
+  const { data, error } = await supabase.functions.invoke('shipping-cancel', {
+    body: { orderId },
+  })
+
+  if (error) {
+    throw new Error(await extractErrorMessage(error, 'Could not cancel the shipment.'))
+  }
+  if (data?.error) throw new Error(data.error)
+  return data
+}
