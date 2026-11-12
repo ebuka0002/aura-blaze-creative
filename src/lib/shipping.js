@@ -13,7 +13,7 @@ async function extractErrorMessage(error, fallback) {
   return error.message || fallback
 }
 
-// Gets a live Red Star Express delivery fee for the address and cart.
+// Gets a live delivery fee from each available courier for the address and cart.
 // Nothing is booked with the courier until payment is verified server-side.
 export async function fetchShippingRates({ deliveryAddress, items, currency }) {
   const { data, error } = await supabase.functions.invoke('shipping-rates', {
@@ -45,7 +45,7 @@ export async function bookCourierPickup({ orderId }) {
   return data
 }
 
-// Admin only (enforced on the server): cancels the order's Red Star shipment.
+// Admin only (enforced on the server): cancels the order's courier shipment (Red Star or GIG).
 // Does not refund the customer or change the order status.
 export async function cancelCourierShipment({ orderId }) {
   const { data, error } = await supabase.functions.invoke('shipping-cancel', {

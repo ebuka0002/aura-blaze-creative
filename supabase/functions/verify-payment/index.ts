@@ -192,6 +192,36 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Verification can run twice at once (browser + webhook). The call that
+    // loses the booking claim gets "already in progress"; wait for the winner
+    // to finish so the emails report the real outcome instead of "NOT booked".
+    if (shippingBooking.attempted && !shippingBooking.success && shippingBooking.bookingInProgress) {
+      for (let i = 0; i < 10; i++) {
+        await new Promise((r) => setTimeout(r, 2500))
+        const { data: latest } = await supabase
+          .from('orders')
+          .select('courier_shipment_id, courier_tracking_number, courier_tracking_url, courier_name, courier_label_url, courier_booking_status, courier_booking_error')
+          .eq('id', order.id)
+          .single()
+        if (latest?.courier_shipment_id) {
+          shippingBooking.success = true
+          shippingBooking.error = null
+          shippingBooking.bookingInProgress = false
+          shippingBooking.shipmentId = latest.courier_shipment_id
+          shippingBooking.trackingNumber = latest.courier_tracking_number
+          shippingBooking.trackingUrl = latest.courier_tracking_url
+          shippingBooking.courierName = latest.courier_name
+          shippingBooking.labelUrl = latest.courier_label_url
+          break
+        }
+        if (latest?.courier_booking_status === 'failed') {
+          shippingBooking.error = latest.courier_booking_error || shippingBooking.error
+          shippingBooking.bookingInProgress = false
+          break
+        }
+      }
+    }
+
     // Tell the store owner about the new order. Sent once, on the first
     // confirmation, after the shipping attempt so it can say how that went.
     if (isFirstConfirmation && RESEND_API_KEY && ADMIN_ORDER_EMAIL) {

@@ -204,7 +204,7 @@ export default function OrderConfirmation() {
         }))
       } catch (err) {
         console.error('Shipping booking retry failed:', err)
-        setBookingRetryResult({ success: false, message: err.message || 'Red Star could not book the shipment. Please try again.' })
+        setBookingRetryResult({ success: false, message: err.message || 'The courier could not book the shipment. Please try again.' })
       } finally {
         setBookingRetrying(false)
       }

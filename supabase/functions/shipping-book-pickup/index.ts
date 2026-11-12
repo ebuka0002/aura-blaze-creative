@@ -21,6 +21,15 @@ import {
   resolvePickupType,
   resolveRoute,
 } from '../_shared/redstar.ts'
+import {
+  GIGL_CARRIER_NAME,
+  GIGL_RATE_PREFIX,
+  giglCapture,
+  giglShipmentExtras,
+  isGiglEnabled,
+  parseGiglRateId,
+  resolveGiglParties,
+} from '../_shared/gigl.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
@@ -43,7 +52,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    if (!isRedstarConfigured() || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    if ((!isRedstarConfigured() && !isGiglEnabled()) || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       return jsonResponse({ error: 'Shipping booking is not fully configured on the server.' }, 500)
     }
 
@@ -155,6 +164,96 @@ Deno.serve(async (req) => {
       }))
       const weight = estimateParcelWeight(weightItems)
       const pieces = Math.max(1, (orderItems || []).reduce((n: number, i: any) => n + Number(i.quantity || 1), 0))
+
+      // ---------- GIG Logistics ----------
+      if (String(currentOrder.shipping_rate_id).startsWith(GIGL_RATE_PREFIX)) {
+        if (!isGiglEnabled()) {
+          const message = 'This order was placed with GIG Logistics, but GIG is not configured on the server.'
+          await markFailed(message, { error: message })
+          return jsonResponse({ error: message, bookingFailed: true }, 500)
+        }
+
+        const { vehicle, pickUp } = parseGiglRateId(currentOrder.shipping_rate_id)
+        const parties = await resolveGiglParties({
+          address: address.address,
+          line2: address.line2,
+          city: address.city,
+          state: address.state,
+        })
+        const receiverAddress = [address.address, address.line2, address.city, address.state]
+          .map((x) => String(x || '').trim()).filter(Boolean).join(', ')
+
+        const result = await giglCapture({
+          parties,
+          vehicle,
+          pickUp,
+          items: (orderItems || []).map((i: any) => ({
+            name: i.product_name || 'Clothing',
+            category: categoryById[i.product_id],
+            quantity: Number(i.quantity || 1),
+            valueNGN: Number(i.unit_price || 0) / 100, // stored in kobo
+          })),
+          receiver: {
+            name: String(currentOrder.customer_name || '').replace(/\s+/g, ' ').trim(),
+            phone: currentOrder.customer_phone,
+            address: receiverAddress,
+          },
+        })
+
+        const giglDebug = { httpStatus: result.status, httpOk: result.ok, body: result.raw }
+        if (!result.ok || !result.waybill) {
+          const message = result.message || 'GIG Logistics did not return a waybill number.'
+          console.error('GIGL booking failed:', JSON.stringify(giglDebug))
+          await markFailed(message, giglDebug)
+          return jsonResponse({ error: message, bookingFailed: true, giglHttpStatus: result.status }, 502)
+        }
+
+        // Best effort: the wallet is debited at creation; record the charged amount and label.
+        const extras = await giglShipmentExtras(result.waybill)
+
+        const { error: giglSaveError } = await supabase
+          .from('orders')
+          .update({
+            courier_shipment_id: result.waybill,
+            courier_tracking_number: result.waybill,
+            courier_tracking_url: null,
+            courier_name: GIGL_CARRIER_NAME,
+            courier_label_url: extras.labelUrl ?? null,
+            courier_booking_status: 'booked',
+            courier_booking_error: null,
+            courier_booking_debug: { ...giglDebug, chargedAmount: extras.charged ?? null },
+            courier_booked_at: new Date().toISOString(),
+          })
+          .eq('id', orderId)
+          .is('courier_shipment_id', null)
+
+        if (giglSaveError) {
+          console.error('GIGL booking succeeded but saving shipment failed:', giglSaveError)
+          return jsonResponse({
+            success: true,
+            warning: 'Shipment was booked at GIG Logistics, but the local order record could not be updated.',
+            shipmentId: result.waybill,
+            trackingNumber: result.waybill,
+          }, 200)
+        }
+
+        console.log('GIGL shipment booked:', JSON.stringify({ orderId, waybill: result.waybill, charged: extras.charged }))
+        return jsonResponse({
+          success: true,
+          shipmentId: result.waybill,
+          trackingNumber: result.waybill,
+          trackingUrl: null,
+          courierName: GIGL_CARRIER_NAME,
+          labelUrl: extras.labelUrl ?? null,
+        })
+      }
+
+      // ---------- Red Star Express ----------
+      if (!isRedstarConfigured()) {
+        const message = 'This order was placed with Red Star, but Red Star is not configured on the server.'
+        await markFailed(message, { error: message })
+        return jsonResponse({ error: message, bookingFailed: true }, 500)
+      }
 
       const route = await resolveRoute({ city: address.city, state: address.state, line2: address.line2 })
       const pickupType = await resolvePickupType()

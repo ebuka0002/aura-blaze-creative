@@ -6,6 +6,7 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2.49.4'
 import { isRedstarConfigured, redstarErrorMessage, redstarFetch } from '../_shared/redstar.ts'
+import { GIGL_RATE_PREFIX, giglCancel, isGiglEnabled } from '../_shared/gigl.ts'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
@@ -44,7 +45,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
   try {
-    if (!isRedstarConfigured() || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    if ((!isRedstarConfigured() && !isGiglEnabled()) || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
       return jsonResponse({ error: 'Shipping is not fully configured on the server.' }, 500)
     }
 
@@ -69,14 +70,18 @@ Deno.serve(async (req) => {
 
     const { data: order, error: readError } = await supabase
       .from('orders')
-      .select('id, order_number, courier_shipment_id, courier_tracking_number, courier_booking_status')
+      .select('id, order_number, shipping_rate_id, courier_name, courier_shipment_id, courier_tracking_number, courier_booking_status')
       .eq('id', orderId)
       .single()
     if (readError || !order) return jsonResponse({ error: 'Order not found' }, 404)
 
+    const isGigl = String(order.shipping_rate_id || '').startsWith(GIGL_RATE_PREFIX) ||
+      /^gig/i.test(String(order.courier_name || ''))
+    const courierLabel = isGigl ? 'GIG Logistics' : 'Red Star'
+
     const waybill = order.courier_tracking_number || order.courier_shipment_id
     if (!waybill || isPlaceholder(waybill)) {
-      return jsonResponse({ error: 'This order has no real Red Star shipment to cancel.' }, 400)
+      return jsonResponse({ error: `This order has no real ${courierLabel} shipment to cancel.` }, 400)
     }
     if (order.courier_booking_status === 'cancelled') {
       return jsonResponse({ success: true, alreadyCancelled: true, waybill })
@@ -85,13 +90,24 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: `Shipment is not in a cancellable state (${order.courier_booking_status}).` }, 409)
     }
 
-    const res = await redstarFetch(`/api/Operations/CancelShipment?WaybillNumber=${encodeURIComponent(waybill)}`)
-    console.log('Red Star CancelShipment:', JSON.stringify({ orderId, waybill, status: res.status, response: res.data }))
+    let res: { ok: boolean; status?: number; data: any }
+    if (isGigl) {
+      if (!isGiglEnabled()) return jsonResponse({ error: 'GIG Logistics is not configured on the server.' }, 500)
+      const g = await giglCancel(String(waybill), `Cancelled by merchant (order ${order.order_number})`)
+      if (!g.ok) {
+        return jsonResponse({ error: g.message || 'GIG Logistics could not cancel the shipment.', giglResponse: g.raw }, 502)
+      }
+      res = { ok: true, data: g.raw }
+    } else {
+      if (!isRedstarConfigured()) return jsonResponse({ error: 'Red Star is not configured on the server.' }, 500)
+      res = await redstarFetch(`/api/Operations/CancelShipment?WaybillNumber=${encodeURIComponent(waybill)}`)
+      console.log('Red Star CancelShipment:', JSON.stringify({ orderId, waybill, status: res.status, response: res.data }))
 
-    const failure = !res.ok
-      ? redstarErrorMessage(res.data, `Red Star could not cancel the shipment (HTTP ${res.status}).`)
-      : cancelFailureMessage(res.data)
-    if (failure) return jsonResponse({ error: failure, redstarResponse: res.data }, 502)
+      const failure = !res.ok
+        ? redstarErrorMessage(res.data, `Red Star could not cancel the shipment (HTTP ${res.status}).`)
+        : cancelFailureMessage(res.data)
+      if (failure) return jsonResponse({ error: failure, redstarResponse: res.data }, 502)
+    }
 
     const { error: saveError } = await supabase
       .from('orders')
@@ -102,10 +118,10 @@ Deno.serve(async (req) => {
       })
       .eq('id', orderId)
     if (saveError) {
-      console.error('Cancelled at Red Star but saving failed:', saveError)
+      console.error(`Cancelled at ${courierLabel} but saving failed:`, saveError)
       return jsonResponse({
         success: true,
-        warning: 'Cancelled at Red Star, but the order record could not be updated. Did you run docs/022_courier_cancelled_status.sql?',
+        warning: `Cancelled at ${courierLabel}, but the order record could not be updated. Did you run docs/022_courier_cancelled_status.sql?`,
         waybill,
         redstarResponse: res.data,
       })

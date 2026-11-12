@@ -89,11 +89,14 @@ export default function AdminOrderDetail() {
       ? order.courier_tracking_number
       : null
 
+  const isGig = /^gig/i.test(order?.courier_name || '') || String(order?.shipping_rate_id || '').startsWith('gigl:')
+  const courierLabel = isGig ? 'GIG Logistics' : 'Red Star'
+
   const handleCancelShipment = async () => {
     if (!window.confirm(
-      `Cancel the Red Star shipment ${realWaybill} for order #${order.order_number}?\n\n` +
+      `Cancel the ${courierLabel} shipment ${realWaybill} for order #${order.order_number}?\n\n` +
       'This does NOT refund the customer (do that in Paystack) and does not change the order status. ' +
-      'Whether the fee returns to your RedSpeed wallet is up to Red Star.'
+      `Whether the fee returns to your ${isGig ? 'GIG' : 'RedSpeed'} wallet is up to ${courierLabel}.`
     )) return
 
     setCancellingShipment(true)
@@ -102,7 +105,7 @@ export default function AdminOrderDetail() {
       setOrder((prev) => ({ ...prev, courier_booking_status: 'cancelled' }))
       alert(
         (result?.warning ? `${result.warning}\n\n` : '') +
-        'Red Star accepted the cancellation. Please confirm it shows as cancelled in the RedSpeed dashboard.'
+        `${courierLabel} accepted the cancellation. Please confirm it shows as cancelled in the ${isGig ? 'GIG' : 'RedSpeed'} dashboard.`
       )
     } catch (err) {
       console.error('Failed to cancel shipment:', err)
@@ -161,7 +164,7 @@ export default function AdminOrderDetail() {
       {(order.courier_booking_status || order.courier_tracking_number) && (
         <div className="bg-white border border-hairline p-5 mb-8">
           <h2 className="text-xs tracking-[0.1em] uppercase text-grey mb-3">Courier</h2>
-          <p className="text-sm">{order.courier_name || 'Red Star Express'}</p>
+          <p className="text-sm">{order.courier_name || (isGig ? 'GIG Logistics' : 'Red Star Express')}</p>
           <p className="text-sm text-grey">
             Status: <span className="capitalize">{order.courier_booking_status || 'pending'}</span>
             {realWaybill && <> · Waybill: <span className="font-medium text-void">{realWaybill}</span></>}
@@ -175,7 +178,7 @@ export default function AdminOrderDetail() {
               disabled={cancellingShipment}
               className="mt-4 border border-blaze text-blaze px-4 py-2 text-xs tracking-[0.1em] uppercase font-medium hover:bg-blaze hover:text-bone transition-colors disabled:opacity-50"
             >
-              {cancellingShipment ? 'Cancelling…' : 'Cancel Red Star shipment'}
+              {cancellingShipment ? 'Cancelling…' : `Cancel ${courierLabel} shipment`}
             </button>
           )}
           {order.courier_booking_status === 'cancelled' && (
