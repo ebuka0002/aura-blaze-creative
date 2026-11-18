@@ -295,7 +295,9 @@ export default function Product() {
           {/* Material */}
           <div className="mt-8 pt-6 border-t border-hairline text-sm text-grey space-y-1.5">
             <p><span className="text-void font-medium">Material:</span> {product.material}</p>
-            <p><span className="text-void font-medium">Shipping:</span> Nigeria 2–5 days · International 7–14 days</p>
+            <p>
+              <span className="text-void font-medium">Shipping:</span> Nigeria: GIG Logistics 3–5 working days · Red Star Express 3–7 working days · International 7–14 days
+            </p>
           </div>
         </div>
       </div>

@@ -4,6 +4,8 @@ import { useAuth } from '../context/AuthContext'
 import { fetchMyOrders } from '../lib/customerOrders'
 import { formatNGN, formatUSD } from '../data/products'
 import SEO from '../components/SEO'
+import { ExternalLink } from 'lucide-react'
+import { getCourier, realWaybill } from '../lib/tracking'
 
 const statusStyles = {
   pending: 'bg-bone-dim text-grey',
@@ -62,27 +64,48 @@ export default function AccountOrders() {
         <div className="divide-y divide-hairline border-t border-hairline">
           {orders.map((order) => {
             const format = order.currency === 'NGN' ? formatNGN : formatUSD
+            const waybill = order.courier_booking_status === 'booked' || order.courier_booking_status === 'cancelled'
+              ? realWaybill(order.courier_tracking_number)
+              : null
+            const courier = getCourier(order)
             return (
-              <Link
-                key={order.id}
-                to={`/account/orders/${order.id}`}
-                className="flex items-center justify-between py-5 hover:bg-bone-dim/50 transition-colors px-2 -mx-2"
-              >
-                <div>
-                  <p className="font-medium text-sm">#{order.order_number}</p>
-                  <p className="text-xs text-grey mt-1">
-                    {new Date(order.created_at).toLocaleDateString('en-US', {
-                      year: 'numeric', month: 'short', day: 'numeric',
-                    })}
-                  </p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <span className={`text-[10px] tracking-[0.1em] uppercase px-2.5 py-1 font-medium ${statusStyles[order.status] || 'bg-bone-dim text-grey'}`}>
-                    {order.status}
-                  </span>
-                  <span className="text-sm font-medium">{format(order.total / 100)}</span>
-                </div>
-              </Link>
+              <div key={order.id} className="py-5 hover:bg-bone-dim/50 transition-colors px-2 -mx-2">
+                <Link to={`/account/orders/${order.id}`} className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-sm">#{order.order_number}</p>
+                    <p className="text-xs text-grey mt-1">
+                      {new Date(order.created_at).toLocaleDateString('en-US', {
+                        year: 'numeric', month: 'short', day: 'numeric',
+                      })}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <span className={`text-[10px] tracking-[0.1em] uppercase px-2.5 py-1 font-medium ${statusStyles[order.status] || 'bg-bone-dim text-grey'}`}>
+                      {order.status}
+                    </span>
+                    <span className="text-sm font-medium">{format(order.total / 100)}</span>
+                  </div>
+                </Link>
+                {waybill && order.courier_booking_status === 'booked' && (
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-grey">
+                    <span>
+                      {courier?.name || order.courier_name} · Waybill{' '}
+                      <span className="text-void font-medium tracking-wide">{waybill}</span>
+                    </span>
+                    {courier?.trackUrl && (
+                      <a
+                        href={courier.trackUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={() => navigator.clipboard?.writeText(waybill).catch(() => {})}
+                        className="inline-flex items-center gap-1.5 border border-void px-3 py-1.5 text-[11px] tracking-[0.1em] uppercase font-medium text-void hover:bg-void hover:text-bone transition-colors"
+                      >
+                        Track <ExternalLink size={12} />
+                      </a>
+                    )}
+                  </div>
+                )}
+              </div>
             )
           })}
         </div>

@@ -4,6 +4,7 @@ import { Check, Star, X, Loader2 } from 'lucide-react'
 import { addReview } from '../data/reviews'
 import { verifyPayment } from '../lib/payments'
 import { bookCourierPickup } from '../lib/shipping'
+import TrackShipment from '../components/TrackShipment'
 import SEO from '../components/SEO'
 
 function ItemReviewRow({ item }) {
@@ -252,13 +253,11 @@ export default function OrderConfirmation() {
 
         {shippingBooking?.success && shippingBooking.trackingNumber && (
           <div className="border border-hairline p-5 mb-10">
-            <p className="font-medium text-sm mb-1">Shipping booked</p>
-            <p className="text-grey text-sm">Tracking number: {shippingBooking.trackingNumber}</p>
-            {shippingBooking.trackingUrl && (
-              <a href={shippingBooking.trackingUrl} target="_blank" rel="noreferrer" className="text-blaze text-sm underline mt-2 inline-block">
-                Track shipment
-              </a>
-            )}
+            <p className="font-medium text-sm mb-3">Shipping booked</p>
+            <TrackShipment
+              courierName={shippingBooking.courierName}
+              waybill={shippingBooking.trackingNumber}
+            />
           </div>
         )}
 

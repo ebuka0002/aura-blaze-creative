@@ -1,8 +1,8 @@
 import SEO from '../components/SEO'
 
 const rows = [
-  ['Lagos Delivery', '2–3 business days', 'From ₦2,500'],
-  ['Nationwide (Nigeria)', '3–5 business days', 'From ₦4,500'],
+  ['Nigeria: GIG Logistics (recommended)', '3–5 working days', 'Calculated at checkout'],
+  ['Nigeria: Red Star Express', '3–7 working days', 'Calculated at checkout'],
   ['International', '7–14 business days', 'From ₦35,000 / $45'],
 ]
 
@@ -38,11 +38,21 @@ export default function Shipping() {
         </tbody>
       </table>
 
+      <div className="border-l-2 border-blaze/40 pl-4 mb-8 text-grey text-sm leading-relaxed">
+        <p className="font-medium text-void mb-1">A note on Red Star tracking</p>
+        <p>
+          Red Star Express's online tracker is still settling in, so updates for your parcel
+          may take a while to appear, or may not show right away. Your order is booked and
+          on its way, and the tracker is simply catching up. If you'd like a status check at
+          any time, message us and we'll happily confirm it for you.
+        </p>
+      </div>
+
       <div className="space-y-6 text-grey text-[15px] leading-relaxed">
         <p>
-          Local Lagos orders are delivered via our courier partners. Nationwide and
-          international orders are fulfilled through GIG Logistics and DHL respectively.
-          You'll receive a tracking link by email as soon as your order ships.
+          Orders within Nigeria are delivered by GIG Logistics or Red Star Express, and you
+          choose your courier at checkout. Once your order is booked, you'll see your waybill
+          number and a Track button on your order confirmation and in your order history.
         </p>
         <p>
           Delivery times are estimates and may vary due to customs processing on

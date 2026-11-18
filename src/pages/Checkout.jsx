@@ -5,6 +5,7 @@ import { useCart } from '../context/CartContext'
 import { useAuth } from '../context/AuthContext'
 import { formatNGN, formatUSD } from '../data/products'
 import SEO from '../components/SEO'
+import { getCourier } from '../lib/tracking'
 import { createOrder } from '../lib/orders'
 import { initializePayment } from '../lib/payments'
 import { updateProfile } from '../lib/auth'
@@ -252,7 +253,7 @@ postalCode: prev.postalCode || addr.postalCode || '',
         currency,
         subtotal,
         shippingCost,
-        shippingMethod: `${selectedRate.carrierName} (${selectedRate.deliveryTime || selectedRate.deliveryEta || 'estimated delivery varies'})`,
+        shippingMethod: `${selectedRate.carrierName} (${selectedRate.deliveryTime || selectedRate.deliveryEta || getCourier(selectedRate)?.eta || 'estimated delivery varies'})`,
         shippingRateId: selectedRate.rateId,
         customerName: `${form.firstName} ${form.lastName}`.trim(),
         customerEmail: form.email,
@@ -533,7 +534,9 @@ postalCode: form.postalCode,
               </div>
             ) : (
               <div className="space-y-2.5">
-                {shippingRates.map((rate) => (
+                {[...shippingRates]
+                  .sort((a, b) => Number(!!getCourier(b)?.recommended) - Number(!!getCourier(a)?.recommended))
+                  .map((rate) => (
                   <label
                     key={rate.rateId}
                     className={`flex items-center justify-between border px-4 py-3.5 text-sm cursor-pointer transition-colors ${
@@ -549,9 +552,18 @@ postalCode: form.postalCode,
                         className="accent-blaze"
                       />
                       <span>
-                        <span className="block font-medium">{rate.carrierName}</span>
-                        {(rate.deliveryTime || rate.deliveryEta) && (
-                          <span className="block text-xs text-grey">{rate.deliveryTime || rate.deliveryEta}</span>
+                        <span className="flex flex-wrap items-center gap-2 font-medium">
+                          {rate.carrierName}
+                          {(rate.recommended ?? getCourier(rate)?.recommended) && (
+                            <span className="text-[10px] tracking-[0.1em] uppercase bg-blaze text-bone px-2 py-0.5 font-medium">
+                              Recommended
+                            </span>
+                          )}
+                        </span>
+                        {(rate.deliveryTime || rate.deliveryEta || getCourier(rate)?.eta) && (
+                          <span className="block text-xs text-grey">
+                            {rate.deliveryTime || rate.deliveryEta || `${getCourier(rate).eta}`}
+                          </span>
                         )}
                       </span>
                     </span>

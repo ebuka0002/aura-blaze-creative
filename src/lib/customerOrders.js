@@ -8,7 +8,7 @@ import { supabase } from './supabase'
 export async function fetchMyOrders() {
   const { data, error } = await supabase
     .from('orders')
-    .select('id, order_number, status, currency, total, created_at')
+    .select('id, order_number, status, currency, total, created_at, shipping_rate_id, courier_name, courier_tracking_number, courier_booking_status')
     .order('created_at', { ascending: false })
 
   if (error) throw error

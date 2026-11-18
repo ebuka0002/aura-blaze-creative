@@ -13,7 +13,7 @@ const faqs = [
   },
   {
     q: 'How long does shipping take?',
-    a: 'Lagos delivery: 2–3 days. Nationwide Nigeria: 3–5 days. International: 7–14 days depending on destination.',
+    a: 'Within Nigeria: GIG Logistics takes 3–5 working days and Red Star Express takes 3–7 working days. International: 7–14 days depending on destination.',
   },
   {
     q: 'Can I return or exchange an item?',
@@ -25,7 +25,7 @@ const faqs = [
   },
   {
     q: 'How do I track my order?',
-    a: 'You\'ll receive a tracking link by email once your order ships. You can also check order status from your account if you checked out with an account.',
+    a: 'Once your order is booked, your waybill number and a Track button appear on your order confirmation and in your order history. Tap Track, paste the waybill, and you\'re set. Note: Red Star\'s online tracker is still settling in, so updates may take a while to show. Your parcel is on its way, and we\'re happy to confirm its status if you message us.',
   },
 ]
 

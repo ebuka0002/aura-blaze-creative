@@ -43,8 +43,9 @@ type Rate = {
   carrierName: string
   amount: number
   currency: 'NGN'
-  deliveryTime: null
+  deliveryTime: string | null
   deliveryEta: null
+  recommended?: boolean
 }
 
 async function quoteRedStar(deliveryAddress: any, items: any[]): Promise<Rate> {
@@ -96,7 +97,7 @@ async function quoteRedStar(deliveryAddress: any, items: any[]): Promise<Rate> {
     carrierName: REDSTAR_CARRIER_NAME,
     amount: fee,
     currency: 'NGN',
-    deliveryTime: null,
+    deliveryTime: '3–7 working days',
     deliveryEta: null,
   }
 }
@@ -122,8 +123,9 @@ async function quoteGigl(deliveryAddress: any, items: any[]): Promise<Rate> {
     carrierName: GIGL_CARRIER_NAME,
     amount: quote.amount,
     currency: 'NGN',
-    deliveryTime: null,
+    deliveryTime: '3–5 working days',
     deliveryEta: null,
+    recommended: true,
   }
 }
 

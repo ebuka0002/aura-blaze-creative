@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { fetchMyOrderDetail } from '../lib/customerOrders'
 import { formatNGN, formatUSD } from '../data/products'
 import SEO from '../components/SEO'
+import TrackShipment from '../components/TrackShipment'
 
 export default function AccountOrderDetail() {
   const { id } = useParams()
@@ -106,6 +107,17 @@ export default function AccountOrderDetail() {
           <span>{format(order.total / 100)}</span>
         </div>
       </div>
+
+      {order.courier_booking_status === 'booked' && (
+        <div className="border-t border-hairline pt-6 mb-10">
+          <h2 className="text-xs tracking-[0.1em] uppercase text-grey mb-3">Shipment</h2>
+          <TrackShipment
+            courierName={order.courier_name}
+            rateId={order.shipping_rate_id}
+            waybill={order.courier_tracking_number}
+          />
+        </div>
+      )}
 
       <div className="border-t border-hairline pt-6">
         <h2 className="text-xs tracking-[0.1em] uppercase text-grey mb-3">Shipping To</h2>
