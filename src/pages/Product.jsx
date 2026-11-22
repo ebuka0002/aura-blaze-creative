@@ -222,19 +222,45 @@ export default function Product() {
             <h3 className="text-xs tracking-[0.1em] uppercase mb-3">
               Color: <span className="text-grey">{selectedColor}</span>
             </h3>
-            <div className="flex gap-2.5">
-              {product.colors.map((c) => (
-                <button
-                  key={c.name}
-                  onClick={() => handleColorChange(c.name)}
-                  className={`w-9 h-9 rounded-full border-2 transition-all ring-1 ring-inset ring-hairline ${
-                    selectedColor === c.name ? 'border-blaze scale-110' : 'border-transparent'
-                  }`}
-                  style={{ backgroundColor: c.hex }}
-                  title={c.name}
-                  aria-label={c.name}
-                />
-              ))}
+            <div className="flex flex-wrap gap-3">
+              {product.colors.map((c) => {
+                const thumb = getProductImages(product, c.name)[0]
+                const colorVariants = (product.variants || []).filter((v) => v.color_name === c.name)
+                const soldOut = colorVariants.length > 0 && colorVariants.every((v) => v.stock_quantity === 0)
+                const selected = selectedColor === c.name
+                return (
+                  <button
+                    key={c.name}
+                    type="button"
+                    onClick={() => handleColorChange(c.name)}
+                    title={soldOut ? `${c.name} (sold out)` : c.name}
+                    aria-label={soldOut ? `${c.name}, sold out` : c.name}
+                    aria-pressed={selected}
+                    className={`relative w-[72px] h-[72px] md:w-20 md:h-20 overflow-hidden rounded-md transition-all ${
+                      selected
+                        ? 'border-[3px] border-void'
+                        : soldOut
+                        ? 'border border-dashed border-grey/50 opacity-60'
+                        : 'border border-hairline hover:border-void'
+                    }`}
+                    style={thumb ? undefined : { backgroundColor: c.hex }}
+                  >
+                    {thumb && (
+                      <img
+                        src={thumb}
+                        alt=""
+                        loading="lazy"
+                        className={`w-full h-full object-cover ${soldOut ? 'grayscale' : ''}`}
+                      />
+                    )}
+                    {selected && (
+                      <span className="absolute bottom-0 right-0 w-5 h-5 bg-void text-bone flex items-center justify-center rounded-tl-md">
+                        <Check size={12} strokeWidth={3} />
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
             </div>
           </div>
 

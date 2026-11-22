@@ -131,3 +131,108 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
 }
+
+// ---------- "Your shipment is booked" email ----------
+// Sent once, right after the courier booking succeeds. Neither courier's
+// tracker accepts the waybill in the link, so the button opens the tracker
+// and the waybill is shown for the customer to copy and paste.
+
+const COURIER_INFO = {
+  gigl: { name: 'GIG Logistics', eta: '3–5 working days', trackUrl: 'https://giglogistics.com/track-shipment/' },
+  redstar: { name: 'Red Star Express', eta: '3–7 working days', trackUrl: 'https://redstarplc.com/tracker/' },
+}
+
+export function courierInfoFor(rateId, courierName) {
+  const id = String(rateId || '')
+  const name = String(courierName || '')
+  if (id.startsWith('gigl:') || /gig/i.test(name)) return COURIER_INFO.gigl
+  if (id.startsWith('redstar:') || /red\s*star/i.test(name)) return COURIER_INFO.redstar
+  return null
+}
+
+export function buildShipmentBookedEmail({ order, waybill, rateId, courierName }) {
+  const courier = courierInfoFor(rateId, courierName)
+  const isRedStar = courier === COURIER_INFO.redstar
+  const name = courier?.name || courierName || 'our courier partner'
+  const address = order.shipping_address || {}
+
+  const trackButton = courier
+    ? `<table cellpadding="0" cellspacing="0" border="0" style="margin: 20px 0 8px;"><tr>
+        <td style="background-color: #0B0B0C;">
+          <a href="${courier.trackUrl}" style="display: inline-block; padding: 14px 28px; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; font-weight: 700; color: #F5F3EF; text-decoration: none;">Track shipment</a>
+        </td></tr></table>
+       <p style="font-size: 12px; color: #8A8578; line-height: 1.6; margin: 0;">Copy your waybill number above, open the tracker and paste it in.</p>`
+    : ''
+
+  const redStarNote = isRedStar
+    ? `<tr><td style="padding: 0 32px 24px;">
+         <div style="border-left: 3px solid #E5481C; padding: 4px 0 4px 14px; font-size: 13px; color: #8A8578; line-height: 1.6;">
+           <strong style="color:#0B0B0C;">A little note on Red Star tracking:</strong> their online tracker is still settling in,
+           so updates may take a while to appear, or may not show right away. Rest easy, your order is booked and on its way.
+           If you'd like a status check at any time, reply to this email and we'll happily confirm it for you.
+         </div>
+       </td></tr>`
+    : ''
+
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Your shipment is booked</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #F5F3EF; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #F5F3EF; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 560px; background-color: #ffffff;">
+          <tr>
+            <td style="background-color: #0B0B0C; padding: 32px; text-align: center;">
+              <div style="font-size: 22px; letter-spacing: 2px; color: #F5F3EF; font-weight: bold;">AURA BLAZE</div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 36px 32px 8px;">
+              <div style="font-size: 22px; font-weight: 700; color: #0B0B0C;">Your shipment is booked</div>
+              <p style="font-size: 14px; color: #8A8578; margin-top: 8px; line-height: 1.6;">
+                Good news, ${escapeHtml(order.customer_name)}. Order <strong style="color:#0B0B0C;">#${escapeHtml(order.order_number)}</strong>
+                has been booked with ${escapeHtml(name)}${courier ? ` and should arrive in ${escapeHtml(courier.eta)}` : ''}.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 8px 32px 24px;">
+              <div style="background-color: #EAE6DD; padding: 18px; text-align: center;">
+                <div style="font-size: 11px; letter-spacing: 1.5px; color: #8A8578; text-transform: uppercase;">Waybill number</div>
+                <div style="font-size: 24px; font-weight: 700; color: #0B0B0C; letter-spacing: 2px; margin-top: 6px;">${escapeHtml(waybill)}</div>
+              </div>
+              ${trackButton}
+            </td>
+          </tr>
+          ${redStarNote}
+          <tr>
+            <td style="padding: 0 32px 32px;">
+              <div style="background-color: #F5F3EF; padding: 16px; font-size: 13px; color: #0B0B0C; line-height: 1.6;">
+                <strong>Delivering to:</strong><br />
+                ${escapeHtml(address.address || '')}<br />
+                ${escapeHtml(address.city || '')}, ${escapeHtml(address.state || '')}<br />
+                ${escapeHtml(address.country || '')}
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 24px 32px; background-color: #0B0B0C; text-align: center;">
+              <div style="font-size: 11px; letter-spacing: 1px; color: #8A8578;">TIMELESS. DISTINCT. ICONIC.</div>
+              <div style="font-size: 11px; color: #8A8578; margin-top: 8px;">
+                Questions about your delivery? Reply to this email or reach us on WhatsApp.
+              </div>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
+}

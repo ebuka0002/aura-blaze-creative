@@ -21,6 +21,7 @@ import {
   resolvePickupType,
   resolveRoute,
 } from '../_shared/redstar.ts'
+import { sendShipmentBookedEmail } from '../_shared/shipmentEmail.ts'
 import {
   GIGL_CARRIER_NAME,
   GIGL_RATE_PREFIX,
@@ -238,6 +239,12 @@ Deno.serve(async (req) => {
         }
 
         console.log('GIGL shipment booked:', JSON.stringify({ orderId, waybill: result.waybill, charged: extras.charged }))
+        await sendShipmentBookedEmail({
+          order: currentOrder,
+          waybill: result.waybill,
+          rateId: currentOrder.shipping_rate_id,
+          courierName: GIGL_CARRIER_NAME,
+        })
         return jsonResponse({
           success: true,
           shipmentId: result.waybill,
@@ -370,6 +377,13 @@ Deno.serve(async (req) => {
       }
 
       console.log('Red Star shipment booked:', JSON.stringify({ orderId, waybill }))
+
+      await sendShipmentBookedEmail({
+        order: currentOrder,
+        waybill,
+        rateId: currentOrder.shipping_rate_id,
+        courierName: REDSTAR_CARRIER_NAME,
+      })
 
       return jsonResponse({
         success: true,
