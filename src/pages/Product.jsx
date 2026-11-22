@@ -222,7 +222,7 @@ export default function Product() {
             <h3 className="text-xs tracking-[0.1em] uppercase mb-3">
               Color: <span className="text-grey">{selectedColor}</span>
             </h3>
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-nowrap gap-3 overflow-x-auto snap-x -mx-5 px-5 py-1 md:mx-0 md:px-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               {product.colors.map((c) => {
                 const thumb = getProductImages(product, c.name)[0]
                 const colorVariants = (product.variants || []).filter((v) => v.color_name === c.name)
@@ -232,11 +232,14 @@ export default function Product() {
                   <button
                     key={c.name}
                     type="button"
-                    onClick={() => handleColorChange(c.name)}
+                    onClick={(e) => {
+                      handleColorChange(c.name)
+                      e.currentTarget.scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' })
+                    }}
                     title={soldOut ? `${c.name} (sold out)` : c.name}
                     aria-label={soldOut ? `${c.name}, sold out` : c.name}
                     aria-pressed={selected}
-                    className={`relative w-[72px] h-[72px] md:w-20 md:h-20 overflow-hidden rounded-md transition-all ${
+                    className={`relative shrink-0 snap-start w-[72px] h-[72px] md:w-20 md:h-20 overflow-hidden rounded-md transition-all ${
                       selected
                         ? 'border-[3px] border-void'
                         : soldOut
