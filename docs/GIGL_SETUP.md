@@ -18,7 +18,7 @@ couriers' prices and picks one. The choice is stored in `orders.shipping_rate_id
 Staging test credentials were shared in chat — rotate that password with GIG, and
 use the **live** credentials only via secrets.
 
-Deploy: `supabase functions deploy shipping-rates shipping-book-pickup shipping-cancel`
+Deploy: `npm  shipping-book-pickup shipping-cancel`
 
 ## Going live
 1. Get production credentials from GIG, set `GIGL_EMAIL`, `GIGL_PASSWORD`, `GIGL_ENV=production`.

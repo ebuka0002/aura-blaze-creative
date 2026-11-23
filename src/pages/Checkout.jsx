@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext'
 import { formatNGN, formatUSD } from '../data/products'
 import SEO from '../components/SEO'
 import { getCourier } from '../lib/tracking'
+import { PROMO_CHECKOUT_LINE } from '../data/promo'
 import { createOrder } from '../lib/orders'
 import { initializePayment } from '../lib/payments'
 import { updateProfile } from '../lib/auth'
@@ -616,6 +617,10 @@ postalCode: form.postalCode,
                 </span>
               </div>
             ))}
+            <div className="flex items-center justify-between border border-dashed border-blaze/50 px-3 py-2.5 text-sm">
+              <span className="font-medium">{PROMO_CHECKOUT_LINE}</span>
+              <span className="text-[10px] tracking-[0.1em] uppercase bg-blaze text-bone px-2 py-0.5 font-medium">Free</span>
+            </div>
           </div>
           <div className="space-y-2.5 text-sm border-t border-hairline pt-4">
             <div className="flex justify-between text-grey">

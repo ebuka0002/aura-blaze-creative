@@ -1,4 +1,4 @@
-const MESSAGE = 'New drop: Coming Soon'
+import { PROMO_BANNER as MESSAGE } from '../data/promo'
 
 export default function AnnouncementBar() {
   return (
